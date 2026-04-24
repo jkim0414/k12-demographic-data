@@ -85,6 +85,15 @@ function toInt(v: unknown): number | null {
   return Math.round(n);
 }
 
+// FTE counts are fractional; preserve decimals. Negative values in these
+// feeds mean suppressed/not-applicable (-1, -2), treat as null.
+function toFloat(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
 function pickString(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
@@ -163,6 +172,16 @@ async function ingestDistricts(year: string) {
       frl_eligible: null,
       english_learners: toInt(r.english_language_learners),
       swd: toInt(r.spec_ed_students),
+      // LEA-level staff counts from CCD directory. `teachers_total_fte` is
+      // the sum of teachers across grade levels; `school_counselors_fte` is
+      // the modern counselor metric (guidance_counselors_total_fte is a
+      // superset including non-school counselors).
+      teachers_fte: toFloat(r.teachers_total_fte),
+      staff_total_fte: toFloat(r.staff_total_fte),
+      counselors_fte: toFloat(r.school_counselors_fte),
+      teachers_certified_fte: null,
+      teachers_first_year_fte: null,
+      teachers_absent_fte: null,
     });
     done += 1;
     if (done % 500 === 0) console.log(`  upserted ${done}/${dir.length}`);
@@ -223,6 +242,14 @@ async function ingestSchools(year: string) {
       frl_eligible: toInt(r.free_or_reduced_price_lunch),
       english_learners: null, // not in school directory
       swd: null,               // not in school directory
+      // School-level staff: CCD only publishes one field (teachers_fte); the
+      // rest come from CRDC and are layered on by ingest-crdc.ts.
+      teachers_fte: toFloat(r.teachers_fte),
+      staff_total_fte: null,
+      counselors_fte: null,
+      teachers_certified_fte: null,
+      teachers_first_year_fte: null,
+      teachers_absent_fte: null,
     });
     done += 1;
     if (done % 2000 === 0) console.log(`  upserted ${done}/${dir.length}`);
@@ -268,22 +295,34 @@ async function ingestSEAs(year: string) {
       frl_eligible: number | null;
       english_learners: number | null;
       swd: number | null;
+      teachers_fte: number | null;
+      staff_total_fte: number | null;
+      counselors_fte: number | null;
+      teachers_certified_fte: number | null;
+      teachers_first_year_fte: number | null;
+      teachers_absent_fte: number | null;
     }>
   >`
     SELECT
       sea_id,
       mode() WITHIN GROUP (ORDER BY state) AS state,
-      SUM(total_enrollment)::int AS total_enrollment,
-      SUM(am_indian)::int        AS am_indian,
-      SUM(asian)::int            AS asian,
-      SUM(black)::int            AS black,
-      SUM(hispanic)::int         AS hispanic,
-      SUM(pacific_islander)::int AS pacific_islander,
-      SUM(white)::int            AS white,
-      SUM(two_or_more)::int      AS two_or_more,
-      SUM(frl_eligible)::int     AS frl_eligible,
-      SUM(english_learners)::int AS english_learners,
-      SUM(swd)::int              AS swd
+      SUM(total_enrollment)::int        AS total_enrollment,
+      SUM(am_indian)::int               AS am_indian,
+      SUM(asian)::int                   AS asian,
+      SUM(black)::int                   AS black,
+      SUM(hispanic)::int                AS hispanic,
+      SUM(pacific_islander)::int        AS pacific_islander,
+      SUM(white)::int                   AS white,
+      SUM(two_or_more)::int             AS two_or_more,
+      SUM(frl_eligible)::int            AS frl_eligible,
+      SUM(english_learners)::int        AS english_learners,
+      SUM(swd)::int                     AS swd,
+      SUM(teachers_fte)::real           AS teachers_fte,
+      SUM(staff_total_fte)::real        AS staff_total_fte,
+      SUM(counselors_fte)::real         AS counselors_fte,
+      SUM(teachers_certified_fte)::real AS teachers_certified_fte,
+      SUM(teachers_first_year_fte)::real AS teachers_first_year_fte,
+      SUM(teachers_absent_fte)::real    AS teachers_absent_fte
     FROM entities
     WHERE entity_type = 'lea' AND sea_id IS NOT NULL
     GROUP BY sea_id
@@ -310,6 +349,12 @@ async function ingestSEAs(year: string) {
       frl_eligible: r.frl_eligible,
       english_learners: r.english_learners,
       swd: r.swd,
+      teachers_fte: r.teachers_fte,
+      staff_total_fte: r.staff_total_fte,
+      counselors_fte: r.counselors_fte,
+      teachers_certified_fte: r.teachers_certified_fte,
+      teachers_first_year_fte: r.teachers_first_year_fte,
+      teachers_absent_fte: r.teachers_absent_fte,
     });
   }
   console.log(`Done: ${rows.length} SEAs upserted.`);
@@ -336,30 +381,42 @@ type EntityRecord = {
   frl_eligible: number | null;
   english_learners: number | null;
   swd: number | null;
+  teachers_fte: number | null;
+  staff_total_fte: number | null;
+  counselors_fte: number | null;
+  teachers_certified_fte: number | null;
+  teachers_first_year_fte: number | null;
+  teachers_absent_fte: number | null;
 };
 
 async function upsertEntity(e: EntityRecord) {
   await sql`
     INSERT INTO entities ${sql(e as unknown as Record<string, unknown>)}
     ON CONFLICT (nces_id) DO UPDATE SET
-      entity_type      = EXCLUDED.entity_type,
-      name             = EXCLUDED.name,
-      state            = EXCLUDED.state,
-      lea_id           = EXCLUDED.lea_id,
-      sea_id           = EXCLUDED.sea_id,
-      school_year      = EXCLUDED.school_year,
-      total_enrollment = EXCLUDED.total_enrollment,
-      am_indian        = EXCLUDED.am_indian,
-      asian            = EXCLUDED.asian,
-      black            = EXCLUDED.black,
-      hispanic         = EXCLUDED.hispanic,
-      pacific_islander = EXCLUDED.pacific_islander,
-      white            = EXCLUDED.white,
-      two_or_more      = EXCLUDED.two_or_more,
-      frl_eligible     = EXCLUDED.frl_eligible,
-      english_learners = EXCLUDED.english_learners,
-      swd              = EXCLUDED.swd,
-      updated_at       = now()
+      entity_type             = EXCLUDED.entity_type,
+      name                    = EXCLUDED.name,
+      state                   = EXCLUDED.state,
+      lea_id                  = EXCLUDED.lea_id,
+      sea_id                  = EXCLUDED.sea_id,
+      school_year             = EXCLUDED.school_year,
+      total_enrollment        = EXCLUDED.total_enrollment,
+      am_indian               = EXCLUDED.am_indian,
+      asian                   = EXCLUDED.asian,
+      black                   = EXCLUDED.black,
+      hispanic                = EXCLUDED.hispanic,
+      pacific_islander        = EXCLUDED.pacific_islander,
+      white                   = EXCLUDED.white,
+      two_or_more             = EXCLUDED.two_or_more,
+      frl_eligible            = EXCLUDED.frl_eligible,
+      english_learners        = EXCLUDED.english_learners,
+      swd                     = EXCLUDED.swd,
+      teachers_fte            = EXCLUDED.teachers_fte,
+      staff_total_fte         = EXCLUDED.staff_total_fte,
+      counselors_fte          = EXCLUDED.counselors_fte,
+      teachers_certified_fte  = EXCLUDED.teachers_certified_fte,
+      teachers_first_year_fte = EXCLUDED.teachers_first_year_fte,
+      teachers_absent_fte     = EXCLUDED.teachers_absent_fte,
+      updated_at              = now()
   `;
 }
 

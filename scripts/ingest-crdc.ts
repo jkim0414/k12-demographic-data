@@ -80,6 +80,15 @@ function toInt(v: unknown): number | null {
   return Math.round(n);
 }
 
+// FTE counts are fractional; preserve decimals. Negative values mean
+// suppressed (-2) or not applicable (-1) — treat as null.
+function toFloat(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
 function pickString(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
@@ -125,45 +134,130 @@ async function ingestEL(year: string): Promise<Map<string, number>> {
   return map;
 }
 
+type SchoolStaff = {
+  teachers_certified_fte: number | null;
+  teachers_first_year_fte: number | null;
+  teachers_absent_fte: number | null;
+  counselors_fte: number | null;
+};
+
+async function ingestTeachersStaff(
+  year: string
+): Promise<Map<string, SchoolStaff>> {
+  console.log(`\n=== CRDC teachers & staff ===`);
+  const rows = await fetchPaginated(
+    `/schools/crdc/teachers-staff/${year}/?per_page=${PAGE_SIZE}`
+  );
+
+  // One row per (ncessch, reporting-instrument). Values should be the same
+  // across instruments for a given school — take MAX to be defensive (same
+  // strategy as the enrollment dedupe).
+  const out = new Map<string, SchoolStaff>();
+  for (const r of rows) {
+    const id = pickString(r.ncessch);
+    if (!id) continue;
+    const next: SchoolStaff = {
+      teachers_certified_fte: toFloat(r.teachers_certified_fte),
+      teachers_first_year_fte: toFloat(r.teachers_first_year_fte),
+      teachers_absent_fte: toFloat(r.teachers_absent_fte),
+      counselors_fte: toFloat(r.counselors_fte),
+    };
+    const prev = out.get(id);
+    if (!prev) {
+      out.set(id, next);
+      continue;
+    }
+    out.set(id, {
+      teachers_certified_fte: maxOrNull(
+        prev.teachers_certified_fte,
+        next.teachers_certified_fte
+      ),
+      teachers_first_year_fte: maxOrNull(
+        prev.teachers_first_year_fte,
+        next.teachers_first_year_fte
+      ),
+      teachers_absent_fte: maxOrNull(
+        prev.teachers_absent_fte,
+        next.teachers_absent_fte
+      ),
+      counselors_fte: maxOrNull(prev.counselors_fte, next.counselors_fte),
+    });
+  }
+  console.log(`  ${out.size} schools have teachers-staff rows`);
+  return out;
+}
+
+function maxOrNull(a: number | null, b: number | null): number | null {
+  if (a == null) return b;
+  if (b == null) return a;
+  return Math.max(a, b);
+}
+
 async function applyToSchools(
   swd: Map<string, number>,
-  el: Map<string, number>
+  el: Map<string, number>,
+  staff: Map<string, SchoolStaff>
 ) {
   console.log(`\n=== Applying CRDC counts to schools ===`);
 
-  // Reset any existing values first so schools missing from the CRDC release
-  // show up as null (not stale). Schools with nces_id present in either map
-  // get the new value; ones not present get null.
-  await sql`UPDATE entities SET english_learners = NULL, swd = NULL WHERE entity_type IN ('school', 'lea', 'sea')`;
+  // Reset any existing CRDC-owned values first so schools missing from the
+  // current release show up as null (not stale). Don't touch teachers_fte —
+  // that one is owned by CCD.
+  await sql`
+    UPDATE entities
+    SET english_learners = NULL,
+        swd = NULL,
+        teachers_certified_fte = NULL,
+        teachers_first_year_fte = NULL,
+        teachers_absent_fte = NULL,
+        counselors_fte = CASE WHEN entity_type = 'lea' THEN counselors_fte ELSE NULL END
+    WHERE entity_type IN ('school', 'lea', 'sea')
+  `;
 
   const ids = new Set<string>();
   for (const k of swd.keys()) ids.add(k);
   for (const k of el.keys()) ids.add(k);
+  for (const k of staff.keys()) ids.add(k);
   const allIds = [...ids];
 
   console.log(`  updating ${allIds.length} schools…`);
 
-  // Build an unnest() update so we can push tens of thousands of rows in a
-  // single round-trip rather than one-per-school.
   const ncessch: string[] = [];
   const elVals: (number | null)[] = [];
   const swdVals: (number | null)[] = [];
+  const certVals: (number | null)[] = [];
+  const firstYrVals: (number | null)[] = [];
+  const absentVals: (number | null)[] = [];
+  const counselorVals: (number | null)[] = [];
   for (const id of allIds) {
     ncessch.push(id);
     elVals.push(el.get(id) ?? null);
     swdVals.push(swd.get(id) ?? null);
+    const s = staff.get(id);
+    certVals.push(s?.teachers_certified_fte ?? null);
+    firstYrVals.push(s?.teachers_first_year_fte ?? null);
+    absentVals.push(s?.teachers_absent_fte ?? null);
+    counselorVals.push(s?.counselors_fte ?? null);
   }
 
   await sql`
     UPDATE entities AS s
-    SET english_learners = u.el,
-        swd = u.swd,
-        updated_at = now()
+    SET english_learners        = u.el,
+        swd                     = u.swd,
+        teachers_certified_fte  = u.cert,
+        teachers_first_year_fte = u.first_yr,
+        teachers_absent_fte     = u.absent,
+        counselors_fte          = u.counselors,
+        updated_at              = now()
     FROM (
       SELECT
-        unnest(${ncessch}::text[])   AS ncessch,
-        unnest(${elVals}::int[])      AS el,
-        unnest(${swdVals}::int[])     AS swd
+        unnest(${ncessch}::text[])     AS ncessch,
+        unnest(${elVals}::int[])        AS el,
+        unnest(${swdVals}::int[])       AS swd,
+        unnest(${certVals}::real[])     AS cert,
+        unnest(${firstYrVals}::real[])  AS first_yr,
+        unnest(${absentVals}::real[])   AS absent,
+        unnest(${counselorVals}::real[]) AS counselors
     ) u
     WHERE s.entity_type = 'school' AND s.nces_id = u.ncessch
   `;
@@ -171,16 +265,27 @@ async function applyToSchools(
 
 async function rollupToLeasAndSeas() {
   console.log(`\n=== Rolling CRDC counts up to LEAs ===`);
+  // Roll EL/SWD plus the CRDC teacher-quality fields up to LEAs. Do NOT
+  // touch counselors_fte at the LEA or SEA level — those come from CCD
+  // (current year) and rolling up from the older CRDC school-level rows
+  // would mix vintages and overwrite the cleaner CCD district totals.
+  // Schools still have counselors_fte from CRDC (CCD has no school-level).
   await sql`
     UPDATE entities AS lea
-    SET english_learners = sub.el_sum,
-        swd = sub.swd_sum,
-        updated_at = now()
+    SET english_learners        = sub.el_sum,
+        swd                     = sub.swd_sum,
+        teachers_certified_fte  = sub.cert_sum,
+        teachers_first_year_fte = sub.first_yr_sum,
+        teachers_absent_fte     = sub.absent_sum,
+        updated_at              = now()
     FROM (
       SELECT
         lea_id,
-        SUM(english_learners)::int AS el_sum,
-        SUM(swd)::int AS swd_sum
+        SUM(english_learners)::int         AS el_sum,
+        SUM(swd)::int                      AS swd_sum,
+        SUM(teachers_certified_fte)::real  AS cert_sum,
+        SUM(teachers_first_year_fte)::real AS first_yr_sum,
+        SUM(teachers_absent_fte)::real     AS absent_sum
       FROM entities
       WHERE entity_type = 'school'
       GROUP BY lea_id
@@ -191,14 +296,20 @@ async function rollupToLeasAndSeas() {
   console.log(`=== Rolling CRDC counts up to SEAs ===`);
   await sql`
     UPDATE entities AS sea
-    SET english_learners = sub.el_sum,
-        swd = sub.swd_sum,
-        updated_at = now()
+    SET english_learners        = sub.el_sum,
+        swd                     = sub.swd_sum,
+        teachers_certified_fte  = sub.cert_sum,
+        teachers_first_year_fte = sub.first_yr_sum,
+        teachers_absent_fte     = sub.absent_sum,
+        updated_at              = now()
     FROM (
       SELECT
         sea_id,
-        SUM(english_learners)::int AS el_sum,
-        SUM(swd)::int AS swd_sum
+        SUM(english_learners)::int         AS el_sum,
+        SUM(swd)::int                      AS swd_sum,
+        SUM(teachers_certified_fte)::real  AS cert_sum,
+        SUM(teachers_first_year_fte)::real AS first_yr_sum,
+        SUM(teachers_absent_fte)::real     AS absent_sum
       FROM entities
       WHERE entity_type = 'lea' AND sea_id IS NOT NULL
       GROUP BY sea_id
@@ -208,10 +319,14 @@ async function rollupToLeasAndSeas() {
 }
 
 async function main() {
-  // Fetch both dimensions before touching the DB so a failure mid-run
+  // Fetch all three dimensions before touching the DB so a failure mid-run
   // doesn't leave schools half-updated.
-  const [swd, el] = await Promise.all([ingestSWD(YEAR), ingestEL(YEAR)]);
-  await applyToSchools(swd, el);
+  const [swd, el, staff] = await Promise.all([
+    ingestSWD(YEAR),
+    ingestEL(YEAR),
+    ingestTeachersStaff(YEAR),
+  ]);
+  await applyToSchools(swd, el, staff);
   await rollupToLeasAndSeas();
 
   const summary = await sql<
@@ -220,18 +335,26 @@ async function main() {
       total: number;
       with_el: number;
       with_swd: number;
+      with_cert: number;
+      with_first_yr: number;
+      with_absent: number;
+      with_counselors: number;
     }>
   >`
     SELECT entity_type,
            COUNT(*)::int AS total,
-           COUNT(english_learners)::int AS with_el,
-           COUNT(swd)::int AS with_swd
+           COUNT(english_learners)::int        AS with_el,
+           COUNT(swd)::int                     AS with_swd,
+           COUNT(teachers_certified_fte)::int  AS with_cert,
+           COUNT(teachers_first_year_fte)::int AS with_first_yr,
+           COUNT(teachers_absent_fte)::int     AS with_absent,
+           COUNT(counselors_fte)::int          AS with_counselors
     FROM entities GROUP BY entity_type ORDER BY entity_type
   `;
   console.log(`\nCoverage after CRDC ingest:`);
   for (const r of summary) {
     console.log(
-      `  ${r.entity_type}: ${r.total} total · ${r.with_el} with EL · ${r.with_swd} with SWD`
+      `  ${r.entity_type}: ${r.total} total · EL=${r.with_el} · SWD=${r.with_swd} · cert=${r.with_cert} · first-yr=${r.with_first_yr} · absent=${r.with_absent} · counselors=${r.with_counselors}`
     );
   }
   await sql.end();

@@ -3,6 +3,7 @@ import {
   DEMOGRAPHIC_FIELDS,
   DemographicField,
   Entity,
+  STAFF_FIELDS,
 } from "./types";
 
 export function aggregate(entities: Entity[]): Aggregate {
@@ -10,20 +11,29 @@ export function aggregate(entities: Entity[]): Aggregate {
   for (const field of DEMOGRAPHIC_FIELDS) {
     breakdown[field] = { total: 0, percent: null, coverage: 0 };
   }
+  const staff = {} as Aggregate["staff"];
+  for (const field of STAFF_FIELDS) {
+    staff[field] = { total: 0, coverage: 0 };
+  }
 
   let total_enrollment = 0;
-  let enrollment_coverage = 0;
 
   for (const e of entities) {
     if (e.total_enrollment != null) {
       total_enrollment += e.total_enrollment;
-      enrollment_coverage += 1;
     }
     for (const field of DEMOGRAPHIC_FIELDS) {
       const v = e[field];
       if (v != null) {
         breakdown[field].total += v;
         breakdown[field].coverage += 1;
+      }
+    }
+    for (const field of STAFF_FIELDS) {
+      const v = e[field];
+      if (v != null) {
+        staff[field].total += v;
+        staff[field].coverage += 1;
       }
     }
   }
@@ -44,12 +54,11 @@ export function aggregate(entities: Entity[]): Aggregate {
       denom > 0 ? (breakdown[field].total / denom) * 100 : null;
   }
 
-  void enrollment_coverage;
-
   return {
     entity_count: entities.length,
     total_enrollment,
     breakdown,
+    staff,
   };
 }
 
@@ -60,7 +69,22 @@ export function formatPct(v: number | null): string {
 
 export function formatInt(v: number | null): string {
   if (v == null) return "—";
-  return v.toLocaleString();
+  return Math.round(v).toLocaleString();
+}
+
+export function formatFte(v: number | null): string {
+  if (v == null) return "—";
+  // FTE counts at LEA/SEA scale are big (5-digit) so drop the decimal;
+  // small-school values round cleanly too.
+  return Math.round(v).toLocaleString();
+}
+
+export function formatRatio(
+  numerator: number | null,
+  denominator: number | null
+): string {
+  if (numerator == null || denominator == null || denominator === 0) return "—";
+  return `${Math.round(numerator / denominator).toLocaleString()} : 1`;
 }
 
 export type { DemographicField };

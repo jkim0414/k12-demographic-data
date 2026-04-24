@@ -11,7 +11,7 @@ import {
   Entity,
   RACE_FIELDS,
 } from "@/lib/types";
-import { formatInt, formatPct } from "@/lib/aggregate";
+import { formatFte, formatInt, formatPct, formatRatio } from "@/lib/aggregate";
 import { Tooltip } from "./Tooltip";
 
 const PROGRAM_FIELDS: DemographicField[] = [
@@ -52,11 +52,13 @@ export function ResultsPanel({ agg, entities }: Props) {
             agg={agg}
           />
         </div>
+        <StaffSection agg={agg} />
         <p className="mt-4 text-[11px] text-gray-400">
-          Sources: NCES CCD {CCD_YEAR} for enrollment, race/ethnicity, and
-          FRL. CRDC {CRDC_YEAR} for English learners and students with
-          disabilities (CCD no longer publishes those counts at the directory
-          level; CRDC is biennial, so the vintage differs).
+          Sources: NCES CCD {CCD_YEAR} for enrollment, race/ethnicity, FRL,
+          and teacher/counselor FTE. CRDC {CRDC_YEAR} for English learners,
+          students with disabilities, teacher certification, first-year
+          teachers, and teacher absenteeism (CCD does not publish these at
+          the directory level; CRDC is biennial, so the vintage differs).
         </p>
       </div>
 
@@ -105,6 +107,160 @@ export function ResultsPanel({ agg, entities }: Props) {
       </div>
     </div>
   );
+}
+
+function StaffSection({ agg }: { agg: Aggregate }) {
+  const s = agg.staff;
+  const enrollment = agg.total_enrollment;
+
+  const rows: Array<{
+    label: string;
+    value: string;
+    coverage?: { reporting: number; total: number };
+    source: string;
+    kind: "ccd" | "crdc";
+    derivedFrom?: "teachers" | "counselors";
+  }> = [
+    {
+      label: "Teachers FTE",
+      value: formatFte(s.teachers_fte.coverage > 0 ? s.teachers_fte.total : null),
+      coverage: { reporting: s.teachers_fte.coverage, total: agg.entity_count },
+      source: CCD_YEAR,
+      kind: "ccd",
+    },
+    {
+      label: "Student : teacher ratio",
+      value: formatRatio(
+        s.teachers_fte.total > 0 ? enrollment : null,
+        s.teachers_fte.total > 0 ? s.teachers_fte.total : null
+      ),
+      source: CCD_YEAR,
+      kind: "ccd",
+      derivedFrom: "teachers",
+    },
+    {
+      label: "Counselors FTE",
+      value: formatFte(
+        s.counselors_fte.coverage > 0 ? s.counselors_fte.total : null
+      ),
+      coverage: {
+        reporting: s.counselors_fte.coverage,
+        total: agg.entity_count,
+      },
+      source: CCD_YEAR,
+      kind: "ccd",
+    },
+    {
+      label: "Student : counselor ratio",
+      value: formatRatio(
+        s.counselors_fte.total > 0 ? enrollment : null,
+        s.counselors_fte.total > 0 ? s.counselors_fte.total : null
+      ),
+      source: CCD_YEAR,
+      kind: "ccd",
+      derivedFrom: "counselors",
+    },
+    {
+      label: "Certified teachers",
+      value: percentOfTeachers(s.teachers_certified_fte.total, s.teachers_fte.total),
+      coverage: {
+        reporting: s.teachers_certified_fte.coverage,
+        total: agg.entity_count,
+      },
+      source: CRDC_YEAR,
+      kind: "crdc",
+    },
+    {
+      label: "First-year teachers",
+      value: percentOfTeachers(s.teachers_first_year_fte.total, s.teachers_fte.total),
+      coverage: {
+        reporting: s.teachers_first_year_fte.coverage,
+        total: agg.entity_count,
+      },
+      source: CRDC_YEAR,
+      kind: "crdc",
+    },
+    {
+      label: "Teachers absent >10 days",
+      value: percentOfTeachers(s.teachers_absent_fte.total, s.teachers_fte.total),
+      coverage: {
+        reporting: s.teachers_absent_fte.coverage,
+        total: agg.entity_count,
+      },
+      source: CRDC_YEAR,
+      kind: "crdc",
+    },
+  ];
+
+  return (
+    <div className="mt-6 border-t border-gray-100 pt-4">
+      <h3 className="mb-2 text-sm font-semibold text-gray-700">
+        Staff & teacher quality
+      </h3>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs uppercase text-gray-500">
+            <th className="py-1">Metric</th>
+            <th className="py-1 text-right">Value</th>
+            <th className="py-1 text-right">Coverage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const partial =
+              r.coverage &&
+              r.coverage.reporting > 0 &&
+              r.coverage.reporting < r.coverage.total;
+            const zero = r.coverage && r.coverage.reporting === 0;
+            const isCrdc = r.kind === "crdc";
+            return (
+              <tr key={r.label} className="border-t border-gray-100">
+                <td className="py-1.5">
+                  {r.label}
+                  {isCrdc && (
+                    <span className="ml-1 text-[10px] text-gray-400">
+                      (CRDC {CRDC_YEAR})
+                    </span>
+                  )}
+                </td>
+                <td className="py-1.5 text-right tabular-nums">
+                  {zero ? (
+                    <NotReported source={r.source} kind={r.kind} />
+                  ) : (
+                    r.value
+                  )}
+                </td>
+                <td className="py-1.5 text-right text-xs text-gray-500 tabular-nums">
+                  {r.derivedFrom
+                    ? "derived"
+                    : r.coverage
+                    ? partial ? (
+                        <Tooltip
+                          label={`${r.coverage.reporting} of ${r.coverage.total} entities reported this field.`}
+                          className="cursor-help text-amber-700 underline decoration-dotted decoration-amber-300"
+                        >
+                          {r.coverage.reporting}/{r.coverage.total}
+                        </Tooltip>
+                      ) : (
+                        `${r.coverage.reporting}/${r.coverage.total}`
+                      )
+                    : "—"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function percentOfTeachers(
+  numerator: number,
+  teachers: number
+): string {
+  if (teachers <= 0 || numerator <= 0) return "—";
+  return `${((numerator / teachers) * 100).toFixed(1)}%`;
 }
 
 function NotReported({
@@ -178,7 +334,7 @@ function ExportMenu({ agg, entities }: Props) {
 
   function exportAggregateCsv() {
     const lines = [
-      "category,students,percent,entities_reporting",
+      "category,students_or_fte,percent,entities_reporting",
       `total_enrollment,${agg.total_enrollment},,${agg.entity_count}`,
     ];
     for (const f of DEMOGRAPHIC_FIELDS) {
@@ -186,6 +342,11 @@ function ExportMenu({ agg, entities }: Props) {
       const tot = b.coverage === 0 ? "" : String(b.total);
       const pct = b.percent == null ? "" : b.percent.toFixed(2);
       lines.push(`${f},${tot},${pct},${b.coverage}`);
+    }
+    for (const f of Object.keys(agg.staff) as (keyof typeof agg.staff)[]) {
+      const s = agg.staff[f];
+      const tot = s.coverage === 0 ? "" : s.total.toFixed(2);
+      lines.push(`${f},${tot},,${s.coverage}`);
     }
     download(
       `aggregate-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -214,6 +375,12 @@ function ExportMenu({ agg, entities }: Props) {
       "frl_eligible",
       "english_learners",
       "swd",
+      "teachers_fte",
+      "staff_total_fte",
+      "counselors_fte",
+      "teachers_certified_fte",
+      "teachers_first_year_fte",
+      "teachers_absent_fte",
     ];
     const esc = (v: unknown) => {
       if (v == null) return "";

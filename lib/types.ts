@@ -20,6 +20,12 @@ export type Entity = {
   frl_eligible: number | null;
   english_learners: number | null;
   swd: number | null;
+  teachers_fte: number | null;
+  staff_total_fte: number | null;
+  counselors_fte: number | null;
+  teachers_certified_fte: number | null;
+  teachers_first_year_fte: number | null;
+  teachers_absent_fte: number | null;
 };
 
 export type SearchHit = Entity & {
@@ -101,4 +107,34 @@ export type Aggregate = {
       coverage: number;       // number of entities reporting this field
     }
   >;
+  staff: Record<
+    StaffField,
+    {
+      total: number;
+      coverage: number;
+    }
+  >;
+};
+
+// Staff FTE fields. Sourced from CCD directory for teachers/staff/counselors
+// (at LEA level) and the school-level teachers_fte; from CRDC teachers-staff
+// for certified/first-year/absent counts.
+export const STAFF_FIELDS = [
+  "teachers_fte",
+  "staff_total_fte",
+  "counselors_fte",
+  "teachers_certified_fte",
+  "teachers_first_year_fte",
+  "teachers_absent_fte",
+] as const;
+
+export type StaffField = (typeof STAFF_FIELDS)[number];
+
+export const STAFF_SOURCE: Record<StaffField, string> = {
+  teachers_fte: CCD_YEAR,
+  staff_total_fte: CCD_YEAR,
+  counselors_fte: CCD_YEAR, // LEAs from CCD; schools roll up from CRDC
+  teachers_certified_fte: CRDC_YEAR,
+  teachers_first_year_fte: CRDC_YEAR,
+  teachers_absent_fte: CRDC_YEAR,
 };

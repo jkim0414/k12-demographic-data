@@ -10,7 +10,8 @@
     "db:schema": "tsx --env-file=.env.local scripts/apply-schema.ts",
     "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
     "db:ingest": "tsx --env-file=.env.local scripts/ingest.ts",
-    "db:ingest:crdc": "tsx --env-file=.env.local scripts/ingest-crdc.ts"
+    "db:ingest:crdc": "tsx --env-file=.env.local scripts/ingest-crdc.ts",
+    "db:patch:ccd-lea-staff": "tsx --env-file=.env.local scripts/patch-ccd-lea-staff.ts"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",

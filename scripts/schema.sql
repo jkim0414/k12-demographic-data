@@ -31,6 +31,17 @@ CREATE TABLE entities (
   english_learners  INTEGER,
   swd               INTEGER,       -- students with disabilities
 
+  -- staff FTE (fractional allowed)
+  -- CCD directory: teachers_fte (LEAs + schools), staff_total_fte (LEAs only),
+  -- counselors_fte at LEA level. CRDC teachers-staff: certified/first-year/
+  -- absent teachers FTE at school level (rolled up to LEAs).
+  teachers_fte            REAL,
+  staff_total_fte         REAL,
+  counselors_fte          REAL,
+  teachers_certified_fte  REAL,
+  teachers_first_year_fte REAL,
+  teachers_absent_fte     REAL,
+
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
