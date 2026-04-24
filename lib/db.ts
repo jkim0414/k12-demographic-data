@@ -6,10 +6,17 @@ declare global {
 }
 
 function create() {
-  const connectionString = process.env.DATABASE_URL;
+  // Accept whatever name the hosting provider chose. Vercel's Neon
+  // integration exposes POSTGRES_URL / DATABASE_URL / POSTGRES_PRISMA_URL
+  // etc.; we pick the first non-empty one.
+  const connectionString =
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL_NON_POOLING;
   if (!connectionString) {
     throw new Error(
-      "DATABASE_URL is not set. Copy .env.example to .env.local and fill it in."
+      "No Postgres connection string found. Set DATABASE_URL (or POSTGRES_URL) in the environment."
     );
   }
   return postgres(connectionString, {
