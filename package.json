@@ -1,0 +1,39 @@
+{
+  "name": "k12-demographic-data",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:schema": "tsx --env-file=.env.local scripts/apply-schema.ts",
+    "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
+    "db:ingest": "tsx --env-file=.env.local scripts/ingest.ts",
+    "db:ingest:crdc": "tsx --env-file=.env.local scripts/ingest-crdc.ts"
+  },
+  "dependencies": {
+    "cmdk": "^1.0.4",
+    "next": "^15.1.4",
+    "papaparse": "^5.4.1",
+    "postgres": "^3.4.5",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/papaparse": "^5.3.15",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

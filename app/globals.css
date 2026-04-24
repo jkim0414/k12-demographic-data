@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+  background: #fafafa;
+  color: #0b1220;
+}
+
+/* cmdk styling */
+[cmdk-root] {
+  width: 100%;
+}
+
+[cmdk-input] {
+  width: 100%;
+  padding: 10px 12px;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+}
+
+[cmdk-list] {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+[cmdk-item] {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+[cmdk-item][data-selected="true"] {
+  background: #eef2ff;
+}
+
+[cmdk-empty] {
+  padding: 12px;
+  color: #6b7280;
+  font-size: 13px;
+}
