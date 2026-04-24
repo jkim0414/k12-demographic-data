@@ -23,6 +23,14 @@ function create() {
     max: 5,
     idle_timeout: 20,
     ssl: connectionString.includes("localhost") ? false : "require",
+    // Neon / Vercel Postgres exposes a pgbouncer-style pooler that shares
+    // connections across requests. pgbouncer doesn't support server-side
+    // prepared statements, and after an `ALTER TABLE` the pooler's cached
+    // query plans can drift from the new schema and raise
+    // "cached plan must not change result type". Disabling prepared
+    // statements sidesteps both issues; the per-query cost is negligible
+    // at our QPS.
+    prepare: false,
   });
 }
 
