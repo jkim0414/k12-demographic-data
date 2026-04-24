@@ -13,6 +13,8 @@
     "db:ingest:crdc": "tsx --env-file=.env.local scripts/ingest-crdc.ts"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "cmdk": "^1.0.4",
     "next": "^15.1.4",
     "papaparse": "^5.4.1",
