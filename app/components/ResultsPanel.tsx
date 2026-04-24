@@ -87,11 +87,15 @@ export function ResultsPanel({ agg, entities }: Props) {
                   <td className="px-2 py-2">{e.state ?? "—"}</td>
                   <td className="px-2 py-2 font-mono text-xs">{e.nces_id}</td>
                   <td className="px-2 py-2 text-right">
-                    {formatInt(e.total_enrollment)}
+                    {e.total_enrollment == null ? (
+                      <NotReported source={CCD_YEAR} kind="ccd" />
+                    ) : (
+                      formatInt(e.total_enrollment)
+                    )}
                   </td>
-                  <td className="px-2 py-2 text-right">{pctOfEnrollment(e.frl_eligible, e.total_enrollment)}</td>
-                  <td className="px-2 py-2 text-right">{pctOfEnrollment(e.english_learners, e.total_enrollment)}</td>
-                  <td className="px-2 py-2 text-right">{pctOfEnrollment(e.swd, e.total_enrollment)}</td>
+                  <PctCell value={e.frl_eligible} enrollment={e.total_enrollment} source={CCD_YEAR} kind="ccd" />
+                  <PctCell value={e.english_learners} enrollment={e.total_enrollment} source={CRDC_YEAR} kind="crdc" />
+                  <PctCell value={e.swd} enrollment={e.total_enrollment} source={CRDC_YEAR} kind="crdc" />
                 </tr>
               ))}
             </tbody>
@@ -102,9 +106,60 @@ export function ResultsPanel({ agg, entities }: Props) {
   );
 }
 
-function pctOfEnrollment(v: number | null, enrollment: number | null): string {
-  if (v == null || !enrollment) return "—";
-  return `${((v / enrollment) * 100).toFixed(0)}%`;
+function NotReported({
+  source,
+  kind,
+}: {
+  source: string;
+  kind: "ccd" | "crdc";
+}) {
+  // CRDC null = often CRDC suppression for that entity (cell or whole-district
+  // withhold, as with SFUSD 2021-22 LEP). CCD null just means the directory
+  // didn't publish the value.
+  const title =
+    kind === "crdc"
+      ? `Not reported or suppressed by CRDC ${source} for this entity`
+      : `Not reported by CCD ${source} for this entity`;
+  return (
+    <span
+      title={title}
+      className="cursor-help text-gray-400 underline decoration-dotted decoration-gray-300"
+    >
+      —
+    </span>
+  );
+}
+
+function PctCell({
+  value,
+  enrollment,
+  source,
+  kind,
+}: {
+  value: number | null;
+  enrollment: number | null;
+  source: string;
+  kind: "ccd" | "crdc";
+}) {
+  if (value == null) {
+    return (
+      <td className="px-2 py-2 text-right">
+        <NotReported source={source} kind={kind} />
+      </td>
+    );
+  }
+  if (!enrollment) {
+    return (
+      <td className="px-2 py-2 text-right" title="No enrollment denominator">
+        <span className="text-gray-400">{formatInt(value)}</span>
+      </td>
+    );
+  }
+  return (
+    <td className="px-2 py-2 text-right">
+      {`${((value / enrollment) * 100).toFixed(0)}%`}
+    </td>
+  );
 }
 
 function ExportMenu({ agg, entities }: Props) {
@@ -236,6 +291,8 @@ function BreakdownTable({
           {fields.map((f) => {
             const b = agg.breakdown[f];
             const isCrdc = DEMOGRAPHIC_SOURCE[f] === CRDC_YEAR;
+            const partial = b.coverage > 0 && b.coverage < agg.entity_count;
+            const zero = b.coverage === 0;
             return (
               <tr key={f} className="border-t border-gray-100">
                 <td className="py-1.5">
@@ -250,10 +307,31 @@ function BreakdownTable({
                   )}
                 </td>
                 <td className="py-1.5 text-right tabular-nums">
-                  {b.coverage === 0 ? "—" : formatInt(b.total)}
+                  {zero ? (
+                    <NotReported
+                      source={isCrdc ? CRDC_YEAR : CCD_YEAR}
+                      kind={isCrdc ? "crdc" : "ccd"}
+                    />
+                  ) : (
+                    formatInt(b.total)
+                  )}
                 </td>
                 <td className="py-1.5 text-right tabular-nums">
-                  {formatPct(b.percent)}
+                  <span
+                    className={partial ? "text-amber-700" : ""}
+                    title={
+                      partial
+                        ? `${b.coverage} of ${agg.entity_count} entities reported this field; percentage reflects only the reporting subset.`
+                        : undefined
+                    }
+                  >
+                    {formatPct(b.percent)}
+                    {partial && (
+                      <span className="ml-1 text-[10px] text-amber-700">
+                        ({b.coverage}/{agg.entity_count})
+                      </span>
+                    )}
+                  </span>
                 </td>
               </tr>
             );
