@@ -79,17 +79,7 @@ export default function Page() {
           Add entities
         </label>
         <EntityAutocomplete onSelect={addHit} />
-        <div className="flex items-center gap-4">
-          <FileUpload onMatched={onMatched} />
-          {selected.length > 0 && (
-            <button
-              onClick={() => setSelected([])}
-              className="text-xs text-gray-500 hover:text-red-600"
-            >
-              Clear all
-            </button>
-          )}
-        </div>
+        <FileUpload onMatched={onMatched} />
       </section>
 
       {pendingMatches && (
@@ -103,9 +93,19 @@ export default function Page() {
       )}
 
       <section className="mb-6">
-        <h2 className="mb-2 text-sm font-semibold text-gray-700">
-          Selected ({selected.length})
-        </h2>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-700">
+            Selected ({selected.length})
+          </h2>
+          {selected.length > 0 && (
+            <button
+              onClick={() => setSelected([])}
+              className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
         <SelectedEntities entities={selected} onRemove={removeId} />
       </section>
 
