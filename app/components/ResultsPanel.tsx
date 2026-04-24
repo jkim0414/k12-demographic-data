@@ -113,20 +113,31 @@ function StaffSection({ agg }: { agg: Aggregate }) {
   const s = agg.staff;
   const enrollment = agg.total_enrollment;
 
-  const rows: Array<{
+  type Row = {
     label: string;
     value: string;
     coverage?: { reporting: number; total: number };
     source: string;
     kind: "ccd" | "crdc";
     derivedFrom?: "teachers" | "counselors";
-  }> = [
+    hide: boolean;
+  };
+
+  // A row is hidden when nothing in the current selection can populate it:
+  // direct FTE fields are hidden at coverage===0, and the two derived ratios
+  // are hidden when their underlying denominator is 0 (no teachers or no
+  // counselors reported). This auto-hides first-year and absent-teacher
+  // rows for the entire CRDC 2021-22 release, which suppressed both fields
+  // nationwide, but they'll come back automatically once a future CRDC
+  // cycle publishes them again.
+  const rows: Row[] = [
     {
       label: "Teachers FTE",
       value: formatFte(s.teachers_fte.coverage > 0 ? s.teachers_fte.total : null),
       coverage: { reporting: s.teachers_fte.coverage, total: agg.entity_count },
       source: CCD_YEAR,
       kind: "ccd",
+      hide: s.teachers_fte.coverage === 0,
     },
     {
       label: "Student : teacher ratio",
@@ -137,6 +148,7 @@ function StaffSection({ agg }: { agg: Aggregate }) {
       source: CCD_YEAR,
       kind: "ccd",
       derivedFrom: "teachers",
+      hide: s.teachers_fte.total <= 0,
     },
     {
       label: "Counselors FTE",
@@ -149,6 +161,7 @@ function StaffSection({ agg }: { agg: Aggregate }) {
       },
       source: CCD_YEAR,
       kind: "ccd",
+      hide: s.counselors_fte.coverage === 0,
     },
     {
       label: "Student : counselor ratio",
@@ -159,6 +172,7 @@ function StaffSection({ agg }: { agg: Aggregate }) {
       source: CCD_YEAR,
       kind: "ccd",
       derivedFrom: "counselors",
+      hide: s.counselors_fte.total <= 0,
     },
     {
       label: "Certified teachers",
@@ -169,6 +183,7 @@ function StaffSection({ agg }: { agg: Aggregate }) {
       },
       source: CRDC_YEAR,
       kind: "crdc",
+      hide: s.teachers_certified_fte.coverage === 0,
     },
     {
       label: "First-year teachers",
@@ -179,6 +194,7 @@ function StaffSection({ agg }: { agg: Aggregate }) {
       },
       source: CRDC_YEAR,
       kind: "crdc",
+      hide: s.teachers_first_year_fte.coverage === 0,
     },
     {
       label: "Teachers absent >10 days",
@@ -189,8 +205,12 @@ function StaffSection({ agg }: { agg: Aggregate }) {
       },
       source: CRDC_YEAR,
       kind: "crdc",
+      hide: s.teachers_absent_fte.coverage === 0,
     },
   ];
+
+  const visible = rows.filter((r) => !r.hide);
+  if (visible.length === 0) return null;
 
   return (
     <div className="mt-6 border-t border-gray-100 pt-4">
@@ -206,7 +226,7 @@ function StaffSection({ agg }: { agg: Aggregate }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => {
+          {visible.map((r) => {
             const partial =
               r.coverage &&
               r.coverage.reporting > 0 &&
