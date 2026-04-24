@@ -12,6 +12,7 @@ import {
   RACE_FIELDS,
 } from "@/lib/types";
 import { formatInt, formatPct } from "@/lib/aggregate";
+import { Tooltip } from "./Tooltip";
 
 const PROGRAM_FIELDS: DemographicField[] = [
   "frl_eligible",
@@ -116,17 +117,17 @@ function NotReported({
   // CRDC null = often CRDC suppression for that entity (cell or whole-district
   // withhold, as with SFUSD 2021-22 LEP). CCD null just means the directory
   // didn't publish the value.
-  const title =
+  const label =
     kind === "crdc"
       ? `Not reported or suppressed by CRDC ${source} for this entity`
       : `Not reported by CCD ${source} for this entity`;
   return (
-    <span
-      title={title}
+    <Tooltip
+      label={label}
       className="cursor-help text-gray-400 underline decoration-dotted decoration-gray-300"
     >
       —
-    </span>
+    </Tooltip>
   );
 }
 
@@ -317,21 +318,19 @@ function BreakdownTable({
                   )}
                 </td>
                 <td className="py-1.5 text-right tabular-nums">
-                  <span
-                    className={partial ? "text-amber-700" : ""}
-                    title={
-                      partial
-                        ? `${b.coverage} of ${agg.entity_count} entities reported this field; percentage reflects only the reporting subset.`
-                        : undefined
-                    }
-                  >
-                    {formatPct(b.percent)}
-                    {partial && (
-                      <span className="ml-1 text-[10px] text-amber-700">
+                  {partial ? (
+                    <Tooltip
+                      label={`${b.coverage} of ${agg.entity_count} entities reported this field; percentage reflects only the reporting subset.`}
+                      className="cursor-help text-amber-700 underline decoration-dotted decoration-amber-300"
+                    >
+                      {formatPct(b.percent)}
+                      <span className="ml-1 text-[10px]">
                         ({b.coverage}/{agg.entity_count})
                       </span>
-                    )}
-                  </span>
+                    </Tooltip>
+                  ) : (
+                    <span>{formatPct(b.percent)}</span>
+                  )}
                 </td>
               </tr>
             );
