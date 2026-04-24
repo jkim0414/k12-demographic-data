@@ -22,7 +22,7 @@ export function Tooltip({ label, children, className }: Props) {
     setMounted(true);
   }, []);
 
-  function show(e: React.MouseEvent<HTMLElement>) {
+  function show(e: React.SyntheticEvent<HTMLElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = rect.left + rect.width / 2;
     const y = rect.top;
