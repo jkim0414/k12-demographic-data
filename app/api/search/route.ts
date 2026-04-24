@@ -31,7 +31,20 @@ export async function GET(req: NextRequest) {
     LIMIT ${limit}
   `;
 
-  // 2. Fuzzy name match via pg_trgm. Prefer entities whose name contains the
+  // 2. For short queries, also match an SEA by its 2-letter state code.
+  // Otherwise a user typing "CA" or "TX" gets nothing, because pg_trgm is
+  // unreliable for 2-character inputs and "California State Education
+  // Agency" doesn't contain "CA" as a substring.
+  const stateHits =
+    q.length <= 3 && (type === null || type === "sea")
+      ? await sql<Entity[]>`
+          SELECT * FROM entities
+          WHERE entity_type = 'sea' AND state ILIKE ${q}
+          LIMIT ${limit}
+        `
+      : [];
+
+  // 3. Fuzzy name match via pg_trgm. Prefer entities whose name contains the
   // query literally, then fall back to similarity ranking.
   const nameHits = await sql<Array<Entity & { similarity: number }>>`
     SELECT *, similarity(name, ${q}) AS similarity
@@ -48,6 +61,11 @@ export async function GET(req: NextRequest) {
   const seen = new Set<number>();
   const results: SearchHit[] = [];
   for (const e of codeHits) {
+    if (seen.has(e.id)) continue;
+    seen.add(e.id);
+    results.push({ ...e, match_kind: "code", similarity: 1 });
+  }
+  for (const e of stateHits) {
     if (seen.has(e.id)) continue;
     seen.add(e.id);
     results.push({ ...e, match_kind: "code", similarity: 1 });

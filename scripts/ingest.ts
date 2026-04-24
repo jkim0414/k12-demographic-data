@@ -28,6 +28,7 @@
  */
 
 import { sql } from "../lib/db";
+import { seaNameFromFips } from "../lib/states";
 
 const YEAR = process.env.YEAR ?? "2023";
 const LEVEL = (process.env.LEVEL ?? "all") as "all" | "school" | "district";
@@ -333,7 +334,7 @@ async function ingestSEAs(year: string) {
     await upsertEntity({
       entity_type: "sea",
       nces_id: r.sea_id,
-      name: `${r.state ?? "??"} State Education Agency`,
+      name: seaNameFromFips(r.sea_id),
       state: r.state,
       lea_id: null,
       sea_id: null,

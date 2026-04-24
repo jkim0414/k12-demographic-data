@@ -11,7 +11,8 @@
     "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
     "db:ingest": "tsx --env-file=.env.local scripts/ingest.ts",
     "db:ingest:crdc": "tsx --env-file=.env.local scripts/ingest-crdc.ts",
-    "db:patch:ccd-lea-staff": "tsx --env-file=.env.local scripts/patch-ccd-lea-staff.ts"
+    "db:patch:ccd-lea-staff": "tsx --env-file=.env.local scripts/patch-ccd-lea-staff.ts",
+    "db:rename-seas": "tsx --env-file=.env.local scripts/rename-seas.ts"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",

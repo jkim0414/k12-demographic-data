@@ -215,7 +215,7 @@ function StaffSection({ agg }: { agg: Aggregate }) {
   return (
     <div className="mt-6 border-t border-gray-100 pt-4">
       <h3 className="mb-2 text-sm font-semibold text-gray-700">
-        Staff & teacher quality
+        Teachers & staff
       </h3>
       <table className="w-full text-sm">
         <thead>
