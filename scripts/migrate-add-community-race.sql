@@ -1,0 +1,11 @@
+-- Add ACS-derived community race/ethnicity + income columns to entities.
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS community_white               INTEGER;
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS community_black               INTEGER;
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS community_hispanic            INTEGER;
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS community_asian               INTEGER;
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS community_am_indian           INTEGER;
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS community_pacific_islander    INTEGER;
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS community_two_or_more         INTEGER;
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS community_population_acs      INTEGER;
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS median_household_income       INTEGER;
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS acs_year                      TEXT;

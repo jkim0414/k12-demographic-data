@@ -51,6 +51,22 @@ CREATE TABLE entities (
   population_5_17_poverty   INTEGER,
   saipe_year                TEXT,
 
+  -- Community race/ethnicity + income from Census ACS 5-year, joined to
+  -- LEAs via the (state FIPS + district code) tuple. Same boundary basis
+  -- as SAIPE. Schools left null. SEAs are population-summed for race;
+  -- median household income at SEA level is computed as a population-
+  -- weighted average of LEA medians at query time, not stored.
+  community_white               INTEGER,
+  community_black               INTEGER,
+  community_hispanic            INTEGER,
+  community_asian               INTEGER,
+  community_am_indian           INTEGER,
+  community_pacific_islander    INTEGER,
+  community_two_or_more         INTEGER,
+  community_population_acs      INTEGER,
+  median_household_income       INTEGER,
+  acs_year                      TEXT,
+
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

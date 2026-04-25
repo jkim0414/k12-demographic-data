@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ACS_YEAR,
   Aggregate,
   CCD_YEAR,
   CRDC_YEAR,
@@ -8,6 +9,7 @@ import {
   DEMOGRAPHIC_LABELS,
   DEMOGRAPHIC_SOURCE,
   DemographicField,
+  ENROLLED_TO_COMMUNITY,
   Entity,
   RACE_FIELDS,
   SAIPE_YEAR,
@@ -41,18 +43,12 @@ export function ResultsPanel({ agg, entities }: Props) {
           </div>
         </div>
 
-        <SectionDivider label="Enrolled students" />
-        <div className="mt-3 grid grid-cols-1 gap-6 md:grid-cols-2">
-          <BreakdownTable
-            title="Race / ethnicity"
-            fields={RACE_FIELDS}
-            agg={agg}
-          />
-          <BreakdownTable
-            title="Programs"
-            fields={PROGRAM_FIELDS}
-            agg={agg}
-          />
+        <SectionDivider label="Race / ethnicity" />
+        <RaceComparisonTable agg={agg} />
+
+        <SectionDivider label="Programs (enrolled students)" />
+        <div className="mt-3">
+          <ProgramsTable agg={agg} />
         </div>
 
         <CommunitySection agg={agg} />
@@ -61,11 +57,14 @@ export function ResultsPanel({ agg, entities }: Props) {
         <StaffSection agg={agg} />
 
         <p className="mt-6 text-[11px] text-gray-400">
-          Sources: NCES CCD {CCD_YEAR} for enrollment, race/ethnicity, FRL,
-          and teacher/counselor FTE. CRDC {CRDC_YEAR} for English learners,
-          students with disabilities, and teacher certification. Census
-          SAIPE {SAIPE_YEAR} for district-boundary population and
-          school-age poverty estimates.
+          Sources: NCES CCD {CCD_YEAR} for enrollment, enrolled
+          race/ethnicity, FRL, and teacher/counselor FTE. CRDC {CRDC_YEAR}{" "}
+          for English learners, students with disabilities, and teacher
+          certification. Census SAIPE {SAIPE_YEAR} for district-boundary
+          population and school-age poverty. Census ACS 5-year{" "}
+          {ACS_YEAR} for community race/ethnicity and median household
+          income, joined to NCES districts via state FIPS + 5-digit
+          district code.
         </p>
       </div>
 
@@ -116,6 +115,117 @@ export function ResultsPanel({ agg, entities }: Props) {
   );
 }
 
+function RaceComparisonTable({ agg }: { agg: Aggregate }) {
+  const c = agg.community;
+  const enrolledDenom = agg.total_enrollment;
+  const communityDenom = c.community_population_acs.total;
+  const hasCommunity = c.community_population_acs.coverage > 0;
+
+  return (
+    <div className="mt-3">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs uppercase text-gray-500">
+            <th className="py-1">Group</th>
+            <th className="py-1 text-right">
+              Enrolled students
+              <span className="ml-1 text-[10px] font-normal normal-case text-gray-400">
+                (CCD {CCD_YEAR})
+              </span>
+            </th>
+            {hasCommunity && (
+              <>
+                <th className="py-1 text-right">
+                  Community residents
+                  <span className="ml-1 text-[10px] font-normal normal-case text-gray-400">
+                    (ACS {ACS_YEAR})
+                  </span>
+                </th>
+                <th className="py-1 text-right">Gap</th>
+              </>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {RACE_FIELDS.map((f) => {
+            const b = agg.breakdown[f];
+            const enrolledPct =
+              b.coverage > 0 && enrolledDenom > 0
+                ? (b.total / enrolledDenom) * 100
+                : null;
+
+            const cf = ENROLLED_TO_COMMUNITY[f];
+            const cBucket = cf ? c[cf] : null;
+            const communityPct =
+              cBucket && cBucket.coverage > 0 && communityDenom > 0
+                ? (cBucket.total / communityDenom) * 100
+                : null;
+
+            const gap =
+              enrolledPct != null && communityPct != null
+                ? enrolledPct - communityPct
+                : null;
+
+            return (
+              <tr key={f} className="border-t border-gray-100">
+                <td className="py-1.5">{DEMOGRAPHIC_LABELS[f]}</td>
+                <td className="py-1.5 text-right tabular-nums">
+                  {enrolledPct != null ? `${enrolledPct.toFixed(1)}%` : "—"}
+                </td>
+                {hasCommunity && (
+                  <>
+                    <td className="py-1.5 text-right tabular-nums">
+                      {communityPct != null
+                        ? `${communityPct.toFixed(1)}%`
+                        : "—"}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">
+                      <GapBadge gap={gap} />
+                    </td>
+                  </>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {hasCommunity && (
+        <p className="mt-2 text-[11px] text-gray-400">
+          Gap = enrolled% − community%. Positive means the group is
+          over-represented in public-school enrollment relative to the
+          population living within the district boundary; negative means
+          under-represented.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function GapBadge({ gap }: { gap: number | null }) {
+  if (gap == null) return <span className="text-gray-400">—</span>;
+  const sign = gap > 0 ? "+" : "";
+  const color =
+    Math.abs(gap) < 1
+      ? "text-gray-400"
+      : gap > 0
+      ? "text-blue-700"
+      : "text-amber-700";
+  return (
+    <span className={`tabular-nums ${color}`}>
+      {sign}
+      {gap.toFixed(1)}
+    </span>
+  );
+}
+
+function ProgramsTable({ agg }: { agg: Aggregate }) {
+  return (
+    <div className="md:max-w-md">
+      <BreakdownTable title="" fields={PROGRAM_FIELDS} agg={agg} />
+    </div>
+  );
+}
+
 function SectionDivider({ label }: { label: string }) {
   return (
     <div className="mt-6 border-t border-gray-200 pt-3">
@@ -128,9 +238,13 @@ function SectionDivider({ label }: { label: string }) {
 
 function CommunitySection({ agg }: { agg: Aggregate }) {
   const c = agg.community;
-  // Hide if no entity in the selection has SAIPE data — schools don't, and
-  // some federal/territory LEAs may also be missing.
-  if (c.population_total.coverage === 0) return null;
+  // Hide if no entity in the selection has SAIPE or ACS data — schools
+  // don't, and some federal/territory LEAs may also be missing.
+  if (
+    c.population_total.coverage === 0 &&
+    c.community_population_acs.coverage === 0
+  )
+    return null;
 
   const enrolled = agg.total_enrollment;
   const popTotal = c.population_total.total;
@@ -151,16 +265,17 @@ function CommunitySection({ agg }: { agg: Aggregate }) {
       ? (enrolled / pop517) * 100
       : null;
 
+  const inc = agg.median_household_income;
+
   return (
     <>
-      <SectionDivider label={`Community (residents in district boundary)`} />
+      <SectionDivider label="Community (residents in district boundary)" />
       <div className="mt-3">
         <p className="mb-3 text-xs text-gray-500">
           Census-estimated population living within the geographic
           boundaries of the selected entities — different from enrolled
-          students above. Useful for comparing the district&apos;s reach to
-          its surrounding population. Schools have no boundary-level data
-          and are excluded from these counts.
+          students above. Schools have no boundary-level data and are
+          excluded from these counts.
         </p>
         <table className="w-full text-sm">
           <tbody>
@@ -184,6 +299,22 @@ function CommunitySection({ agg }: { agg: Aggregate }) {
               extra={
                 childPovertyPct != null
                   ? `(${childPovertyPct.toFixed(1)}% of school-age)`
+                  : null
+              }
+            />
+            <Row
+              label="Median household income"
+              tooltip={
+                agg.entity_count > 1
+                  ? "Population-weighted average of LEA medians (true grand median requires microdata). Approximates state-level published medians within ~1-2%."
+                  : "Median household income within the district boundary, ACS 5-year."
+              }
+              value={inc.weighted != null ? `$${inc.weighted.toLocaleString()}` : "—"}
+              coverage={inc.coverage}
+              total={agg.entity_count}
+              extra={
+                agg.entity_count > 1 && inc.weighted != null
+                  ? "(weighted)"
                   : null
               }
             />
@@ -559,6 +690,16 @@ function ExportMenu({ agg, entities }: Props) {
       "population_5_17",
       "population_5_17_poverty",
       "saipe_year",
+      "community_population_acs",
+      "community_white",
+      "community_black",
+      "community_hispanic",
+      "community_asian",
+      "community_am_indian",
+      "community_pacific_islander",
+      "community_two_or_more",
+      "median_household_income",
+      "acs_year",
     ];
     const esc = (v: unknown) => {
       if (v == null) return "";
@@ -624,7 +765,9 @@ function BreakdownTable({
 }) {
   return (
     <div>
-      <h3 className="mb-2 text-sm font-semibold text-gray-700">{title}</h3>
+      {title && (
+        <h3 className="mb-2 text-sm font-semibold text-gray-700">{title}</h3>
+      )}
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs uppercase text-gray-500">

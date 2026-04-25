@@ -30,6 +30,16 @@ export type Entity = {
   population_5_17: number | null;
   population_5_17_poverty: number | null;
   saipe_year: string | null;
+  community_white: number | null;
+  community_black: number | null;
+  community_hispanic: number | null;
+  community_asian: number | null;
+  community_am_indian: number | null;
+  community_pacific_islander: number | null;
+  community_two_or_more: number | null;
+  community_population_acs: number | null;
+  median_household_income: number | null;
+  acs_year: string | null;
 };
 
 export type SearchHit = Entity & {
@@ -125,6 +135,12 @@ export type Aggregate = {
       coverage: number;
     }
   >;
+  // Population-weighted median household income across the entities that
+  // reported it. Median can't be summed; this is the standard summary.
+  median_household_income: {
+    weighted: number | null;
+    coverage: number;
+  };
 };
 
 // Staff FTE fields. Sourced from CCD directory for teachers/staff/counselors
@@ -150,15 +166,55 @@ export const STAFF_SOURCE: Record<StaffField, string> = {
   teachers_absent_fte: CRDC_YEAR,
 };
 
-// Community population: residents within an LEA's geographic boundary,
-// from the Census Bureau's SAIPE program (joined to NCES districts).
-// Only LEAs and SEAs (rolled up); schools have no SAIPE concept.
+// Community fields: stats about residents within an LEA's geographic
+// boundary (not enrolled students). Only LEAs and SEAs (rolled up);
+// schools have no boundary-level concept.
+//
+// SAIPE counts come from Census SAIPE; race + income come from Census
+// ACS 5-year. Both sources are joined to NCES districts via state FIPS
+// + 5-digit district code, so they share the same denominator.
 export const COMMUNITY_FIELDS = [
+  // SAIPE
   "population_total",
   "population_5_17",
   "population_5_17_poverty",
+  // ACS race buckets — mutually exclusive, sum to community_population_acs
+  "community_white",
+  "community_black",
+  "community_hispanic",
+  "community_asian",
+  "community_am_indian",
+  "community_pacific_islander",
+  "community_two_or_more",
+  "community_population_acs",
 ] as const;
 
 export type CommunityField = (typeof COMMUNITY_FIELDS)[number];
 
+// Race-only subset for side-by-side comparison with enrolled students.
+// Order intentionally mirrors RACE_FIELDS so the two tables read together.
+export const COMMUNITY_RACE_FIELDS: CommunityField[] = [
+  "community_white",
+  "community_black",
+  "community_hispanic",
+  "community_asian",
+  "community_am_indian",
+  "community_pacific_islander",
+  "community_two_or_more",
+];
+
+// Maps an enrolled-students race field to the matching community field.
+export const ENROLLED_TO_COMMUNITY: Partial<
+  Record<DemographicField, CommunityField>
+> = {
+  white: "community_white",
+  black: "community_black",
+  hispanic: "community_hispanic",
+  asian: "community_asian",
+  am_indian: "community_am_indian",
+  pacific_islander: "community_pacific_islander",
+  two_or_more: "community_two_or_more",
+};
+
 export const SAIPE_YEAR = "2023-24";
+export const ACS_YEAR = "2019-2023";

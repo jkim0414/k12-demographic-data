@@ -66,12 +66,34 @@ export function aggregate(entities: Entity[]): Aggregate {
       denom > 0 ? (breakdown[field].total / denom) * 100 : null;
   }
 
+  // Population-weighted median income. True statewide median requires
+  // microdata, but weighting LEA medians by population is the standard
+  // ad-hoc summary and lines up well with state-published medians.
+  let income_numer = 0;
+  let income_denom = 0;
+  let income_coverage = 0;
+  for (const e of entities) {
+    if (
+      e.median_household_income != null &&
+      e.community_population_acs != null &&
+      e.community_population_acs > 0
+    ) {
+      income_numer += e.median_household_income * e.community_population_acs;
+      income_denom += e.community_population_acs;
+      income_coverage += 1;
+    }
+  }
+
   return {
     entity_count: entities.length,
     total_enrollment,
     breakdown,
     staff,
     community,
+    median_household_income: {
+      weighted: income_denom > 0 ? Math.round(income_numer / income_denom) : null,
+      coverage: income_coverage,
+    },
   };
 }
 
