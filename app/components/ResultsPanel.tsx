@@ -10,6 +10,7 @@ import {
   DemographicField,
   Entity,
   RACE_FIELDS,
+  SAIPE_YEAR,
 } from "@/lib/types";
 import { formatFte, formatInt, formatPct, formatRatio } from "@/lib/aggregate";
 import { Tooltip } from "./Tooltip";
@@ -40,7 +41,8 @@ export function ResultsPanel({ agg, entities }: Props) {
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
+        <SectionDivider label="Enrolled students" />
+        <div className="mt-3 grid grid-cols-1 gap-6 md:grid-cols-2">
           <BreakdownTable
             title="Race / ethnicity"
             fields={RACE_FIELDS}
@@ -52,13 +54,18 @@ export function ResultsPanel({ agg, entities }: Props) {
             agg={agg}
           />
         </div>
+
+        <CommunitySection agg={agg} />
+
+        <SectionDivider label="Teachers & staff" />
         <StaffSection agg={agg} />
-        <p className="mt-4 text-[11px] text-gray-400">
+
+        <p className="mt-6 text-[11px] text-gray-400">
           Sources: NCES CCD {CCD_YEAR} for enrollment, race/ethnicity, FRL,
           and teacher/counselor FTE. CRDC {CRDC_YEAR} for English learners,
-          students with disabilities, teacher certification, first-year
-          teachers, and teacher absenteeism (CCD does not publish these at
-          the directory level; CRDC is biennial, so the vintage differs).
+          students with disabilities, and teacher certification. Census
+          SAIPE {SAIPE_YEAR} for district-boundary population and
+          school-age poverty estimates.
         </p>
       </div>
 
@@ -106,6 +113,149 @@ export function ResultsPanel({ agg, entities }: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div className="mt-6 border-t border-gray-200 pt-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+        {label}
+      </h3>
+    </div>
+  );
+}
+
+function CommunitySection({ agg }: { agg: Aggregate }) {
+  const c = agg.community;
+  // Hide if no entity in the selection has SAIPE data — schools don't, and
+  // some federal/territory LEAs may also be missing.
+  if (c.population_total.coverage === 0) return null;
+
+  const enrolled = agg.total_enrollment;
+  const popTotal = c.population_total.total;
+  const pop517 = c.population_5_17.total;
+  const pop517pov = c.population_5_17_poverty.total;
+
+  const childPovertyPct =
+    c.population_5_17.total > 0 && c.population_5_17_poverty.coverage > 0
+      ? (pop517pov / pop517) * 100
+      : null;
+
+  // Public-school capture: how many of the school-age kids in the boundary
+  // are actually enrolled in this LEA's public schools. Numbers above ~95%
+  // mean essentially everyone goes to district public; lower means lots of
+  // private/charter/homeschool/cross-district.
+  const captureRate =
+    c.population_5_17.total > 0 && enrolled > 0
+      ? (enrolled / pop517) * 100
+      : null;
+
+  return (
+    <>
+      <SectionDivider label={`Community (residents in district boundary)`} />
+      <div className="mt-3">
+        <p className="mb-3 text-xs text-gray-500">
+          Census-estimated population living within the geographic
+          boundaries of the selected entities — different from enrolled
+          students above. Useful for comparing the district&apos;s reach to
+          its surrounding population. Schools have no boundary-level data
+          and are excluded from these counts.
+        </p>
+        <table className="w-full text-sm">
+          <tbody>
+            <Row
+              label="Total population"
+              value={formatInt(popTotal)}
+              coverage={c.population_total.coverage}
+              total={agg.entity_count}
+            />
+            <Row
+              label="School-age population (5–17)"
+              value={formatInt(pop517)}
+              coverage={c.population_5_17.coverage}
+              total={agg.entity_count}
+            />
+            <Row
+              label="Children in poverty (5–17)"
+              value={formatInt(pop517pov)}
+              coverage={c.population_5_17_poverty.coverage}
+              total={agg.entity_count}
+              extra={
+                childPovertyPct != null
+                  ? `(${childPovertyPct.toFixed(1)}% of school-age)`
+                  : null
+              }
+            />
+            <Row
+              label="Public-school capture rate"
+              tooltip="Enrolled students ÷ school-age residents in district. Below ~95% suggests significant private, charter, homeschool, or cross-district enrollment."
+              value={captureRate != null ? `${captureRate.toFixed(1)}%` : "—"}
+              derived
+            />
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function Row({
+  label,
+  value,
+  coverage,
+  total,
+  extra,
+  derived,
+  tooltip,
+}: {
+  label: string;
+  value: string;
+  coverage?: number;
+  total?: number;
+  extra?: string | null;
+  derived?: boolean;
+  tooltip?: string;
+}) {
+  const partial =
+    coverage != null && total != null && coverage > 0 && coverage < total;
+  return (
+    <tr className="border-t border-gray-100">
+      <td className="py-1.5">
+        {tooltip ? (
+          <Tooltip
+            label={tooltip}
+            className="cursor-help underline decoration-dotted decoration-gray-300"
+          >
+            {label}
+          </Tooltip>
+        ) : (
+          label
+        )}
+      </td>
+      <td className="py-1.5 text-right tabular-nums">
+        {value}
+        {extra && <span className="ml-1 text-xs text-gray-500">{extra}</span>}
+      </td>
+      <td className="py-1.5 text-right text-xs text-gray-500 tabular-nums">
+        {derived ? (
+          "derived"
+        ) : coverage != null && total != null ? (
+          partial ? (
+            <Tooltip
+              label={`${coverage} of ${total} entities reported.`}
+              className="cursor-help text-amber-700 underline decoration-dotted decoration-amber-300"
+            >
+              {coverage}/{total}
+            </Tooltip>
+          ) : (
+            `${coverage}/${total}`
+          )
+        ) : (
+          "—"
+        )}
+      </td>
+    </tr>
   );
 }
 
@@ -213,10 +363,7 @@ function StaffSection({ agg }: { agg: Aggregate }) {
   if (visible.length === 0) return null;
 
   return (
-    <div className="mt-6 border-t border-gray-100 pt-4">
-      <h3 className="mb-2 text-sm font-semibold text-gray-700">
-        Teachers & staff
-      </h3>
+    <div className="mt-3">
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs uppercase text-gray-500">
@@ -368,6 +515,13 @@ function ExportMenu({ agg, entities }: Props) {
       const tot = s.coverage === 0 ? "" : s.total.toFixed(2);
       lines.push(`${f},${tot},,${s.coverage}`);
     }
+    for (const f of Object.keys(
+      agg.community
+    ) as (keyof typeof agg.community)[]) {
+      const s = agg.community[f];
+      const tot = s.coverage === 0 ? "" : String(s.total);
+      lines.push(`${f},${tot},,${s.coverage}`);
+    }
     download(
       `aggregate-${new Date().toISOString().slice(0, 10)}.csv`,
       "text/csv",
@@ -401,6 +555,10 @@ function ExportMenu({ agg, entities }: Props) {
       "teachers_certified_fte",
       "teachers_first_year_fte",
       "teachers_absent_fte",
+      "population_total",
+      "population_5_17",
+      "population_5_17_poverty",
+      "saipe_year",
     ];
     const esc = (v: unknown) => {
       if (v == null) return "";

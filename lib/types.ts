@@ -26,6 +26,10 @@ export type Entity = {
   teachers_certified_fte: number | null;
   teachers_first_year_fte: number | null;
   teachers_absent_fte: number | null;
+  population_total: number | null;
+  population_5_17: number | null;
+  population_5_17_poverty: number | null;
+  saipe_year: string | null;
 };
 
 export type SearchHit = Entity & {
@@ -114,6 +118,13 @@ export type Aggregate = {
       coverage: number;
     }
   >;
+  community: Record<
+    CommunityField,
+    {
+      total: number;
+      coverage: number;
+    }
+  >;
 };
 
 // Staff FTE fields. Sourced from CCD directory for teachers/staff/counselors
@@ -138,3 +149,16 @@ export const STAFF_SOURCE: Record<StaffField, string> = {
   teachers_first_year_fte: CRDC_YEAR,
   teachers_absent_fte: CRDC_YEAR,
 };
+
+// Community population: residents within an LEA's geographic boundary,
+// from the Census Bureau's SAIPE program (joined to NCES districts).
+// Only LEAs and SEAs (rolled up); schools have no SAIPE concept.
+export const COMMUNITY_FIELDS = [
+  "population_total",
+  "population_5_17",
+  "population_5_17_poverty",
+] as const;
+
+export type CommunityField = (typeof COMMUNITY_FIELDS)[number];
+
+export const SAIPE_YEAR = "2023-24";

@@ -4,9 +4,9 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "K-12 Demographic Data",
+  title: "K-12 District Data Explorer",
   description:
-    "Look up and aggregate NCES demographic data for schools, districts, and state education agencies.",
+    "Aggregate NCES, CRDC, and Census SAIPE data for U.S. schools, districts, and state education agencies.",
 };
 
 export default function RootLayout({

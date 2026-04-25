@@ -1,5 +1,6 @@
 import {
   Aggregate,
+  COMMUNITY_FIELDS,
   DEMOGRAPHIC_FIELDS,
   DemographicField,
   Entity,
@@ -14,6 +15,10 @@ export function aggregate(entities: Entity[]): Aggregate {
   const staff = {} as Aggregate["staff"];
   for (const field of STAFF_FIELDS) {
     staff[field] = { total: 0, coverage: 0 };
+  }
+  const community = {} as Aggregate["community"];
+  for (const field of COMMUNITY_FIELDS) {
+    community[field] = { total: 0, coverage: 0 };
   }
 
   let total_enrollment = 0;
@@ -34,6 +39,13 @@ export function aggregate(entities: Entity[]): Aggregate {
       if (v != null) {
         staff[field].total += v;
         staff[field].coverage += 1;
+      }
+    }
+    for (const field of COMMUNITY_FIELDS) {
+      const v = e[field];
+      if (v != null) {
+        community[field].total += v;
+        community[field].coverage += 1;
       }
     }
   }
@@ -59,6 +71,7 @@ export function aggregate(entities: Entity[]): Aggregate {
     total_enrollment,
     breakdown,
     staff,
+    community,
   };
 }
 

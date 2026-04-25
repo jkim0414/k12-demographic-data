@@ -42,6 +42,15 @@ CREATE TABLE entities (
   teachers_first_year_fte REAL,
   teachers_absent_fte     REAL,
 
+  -- Community population: residents within the LEA's geographic boundary
+  -- (not enrolled students). Sourced from Census SAIPE; LEA-level only,
+  -- rolled up to SEAs. NULL on schools — concept doesn't apply at school
+  -- level since multiple schools share a district boundary.
+  population_total          INTEGER,
+  population_5_17           INTEGER,
+  population_5_17_poverty   INTEGER,
+  saipe_year                TEXT,
+
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
