@@ -28,92 +28,388 @@ type Props = {
   entities: Entity[];
 };
 
+// =============================================================================
+// Top-level layout
+// =============================================================================
+
 export function ResultsPanel({ agg, entities }: Props) {
+  const sections = visibleSections(agg);
+
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-gray-300 bg-white p-4">
-        <div className="flex items-baseline justify-between gap-4">
-          <h2 className="text-lg font-semibold">Aggregate demographics</h2>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-500">
-              {agg.entity_count.toLocaleString()} entities · total enrollment{" "}
-              {formatInt(agg.total_enrollment)}
-            </span>
+      {/* Aggregate card */}
+      <div className="rounded-lg border border-gray-300 bg-white">
+        <div className="border-b border-gray-200 px-5 pb-4 pt-5">
+          <div className="flex items-baseline justify-between gap-4">
+            <h2 className="text-lg font-semibold">Aggregate</h2>
             <ExportMenu agg={agg} entities={entities} />
           </div>
+          <HeadlineStrip agg={agg} />
         </div>
 
-        <SectionDivider label="Race / ethnicity" />
-        <RaceComparisonTable agg={agg} />
+        <AnchorNav sections={sections} />
 
-        <SectionDivider label="Programs (enrolled students)" />
-        <div className="mt-3">
-          <ProgramsTable agg={agg} />
-        </div>
+        <div className="px-5 pb-5">
+          {sections.includes("race") && (
+            <Section
+              id="race"
+              title="Race / ethnicity"
+              caption={
+                agg.community.community_population_acs.coverage > 0
+                  ? `Enrolled students from CCD ${CCD_YEAR} • Community residents from ACS ${ACS_YEAR}`
+                  : `Enrolled students from CCD ${CCD_YEAR}`
+              }
+            >
+              <RaceComparisonTable agg={agg} />
+            </Section>
+          )}
 
-        <CommunitySection agg={agg} />
+          {sections.includes("programs") && (
+            <Section
+              id="programs"
+              title="Programs (enrolled students)"
+              caption={`FRL from CCD ${CCD_YEAR} • EL and SWD from CRDC ${CRDC_YEAR}`}
+            >
+              <ProgramsTable agg={agg} />
+            </Section>
+          )}
 
-        <SectionDivider label="Teachers & staff" />
-        <StaffSection agg={agg} />
+          {sections.includes("community") && (
+            <Section
+              id="community"
+              title="Community"
+              subtitle="Residents living within the district boundary — not enrolled students. Schools are excluded; boundary-level data only exists for LEAs and SEAs."
+              caption={`Population and child poverty from Census SAIPE ${SAIPE_YEAR} • Median income from Census ACS ${ACS_YEAR}`}
+            >
+              <CommunityTable agg={agg} />
+            </Section>
+          )}
 
-        <p className="mt-6 text-[11px] text-gray-400">
-          Sources: NCES CCD {CCD_YEAR} for enrollment, enrolled
-          race/ethnicity, FRL, and teacher/counselor FTE. CRDC {CRDC_YEAR}{" "}
-          for English learners, students with disabilities, and teacher
-          certification. Census SAIPE {SAIPE_YEAR} for district-boundary
-          population and school-age poverty. Census ACS 5-year{" "}
-          {ACS_YEAR} for community race/ethnicity and median household
-          income, joined to NCES districts via state FIPS + 5-digit
-          district code.
-        </p>
-      </div>
-
-      <div className="rounded-lg border border-gray-300 bg-white p-4">
-        <h3 className="mb-3 text-sm font-semibold">
-          Included entities ({entities.length})
-        </h3>
-        <div className="max-h-96 overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-gray-50 text-left text-xs uppercase text-gray-500">
-              <tr>
-                <th className="px-2 py-2">Name</th>
-                <th className="px-2 py-2">Type</th>
-                <th className="px-2 py-2">State</th>
-                <th className="px-2 py-2">NCES ID</th>
-                <th className="px-2 py-2 text-right">Enrollment</th>
-                <th className="px-2 py-2 text-right">FRL</th>
-                <th className="px-2 py-2 text-right" title="English learners (CRDC 2021-22)">EL</th>
-                <th className="px-2 py-2 text-right" title="Students with disabilities (CRDC 2021-22)">SWD</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {entities.map((e) => (
-                <tr key={e.id}>
-                  <td className="px-2 py-2 font-medium">{e.name}</td>
-                  <td className="px-2 py-2 text-xs uppercase text-gray-500">
-                    {e.entity_type}
-                  </td>
-                  <td className="px-2 py-2">{e.state ?? "—"}</td>
-                  <td className="px-2 py-2 font-mono text-xs">{e.nces_id}</td>
-                  <td className="px-2 py-2 text-right">
-                    {e.total_enrollment == null ? (
-                      <NotReported source={CCD_YEAR} kind="ccd" />
-                    ) : (
-                      formatInt(e.total_enrollment)
-                    )}
-                  </td>
-                  <PctCell value={e.frl_eligible} enrollment={e.total_enrollment} source={CCD_YEAR} kind="ccd" />
-                  <PctCell value={e.english_learners} enrollment={e.total_enrollment} source={CRDC_YEAR} kind="crdc" />
-                  <PctCell value={e.swd} enrollment={e.total_enrollment} source={CRDC_YEAR} kind="crdc" />
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {sections.includes("teachers") && (
+            <Section
+              id="teachers"
+              title="Teachers & staff"
+              caption={`FTE counts from CCD ${CCD_YEAR} • Certification from CRDC ${CRDC_YEAR}`}
+            >
+              <TeachersTable agg={agg} />
+            </Section>
+          )}
         </div>
       </div>
+
+      {/* Entities card */}
+      <EntitiesCard entities={entities} />
     </div>
   );
 }
+
+// Decide which sections render. Hides ones with no data so the anchor nav
+// stays accurate.
+function visibleSections(agg: Aggregate): string[] {
+  const out: string[] = ["race"];
+  // programs: show if any program field has any coverage
+  if (PROGRAM_FIELDS.some((f) => agg.breakdown[f].coverage > 0)) {
+    out.push("programs");
+  }
+  if (
+    agg.community.population_total.coverage > 0 ||
+    agg.community.community_population_acs.coverage > 0
+  ) {
+    out.push("community");
+  }
+  // teachers: show if at least one staff field has coverage
+  const staff = agg.staff;
+  const teachersHasData =
+    staff.teachers_fte.coverage > 0 ||
+    staff.counselors_fte.coverage > 0 ||
+    staff.teachers_certified_fte.coverage > 0 ||
+    staff.teachers_first_year_fte.coverage > 0 ||
+    staff.teachers_absent_fte.coverage > 0;
+  if (teachersHasData) out.push("teachers");
+  return out;
+}
+
+// =============================================================================
+// Headline strip — key numbers at the top of the aggregate card
+// =============================================================================
+
+function HeadlineStrip({ agg }: { agg: Aggregate }) {
+  const c = agg.community;
+  const inc = agg.median_household_income;
+
+  const enrolled = agg.total_enrollment;
+  const communityPop = c.population_total.coverage > 0 ? c.population_total.total : null;
+  const schoolAge = c.population_5_17.coverage > 0 ? c.population_5_17.total : null;
+  const captureRate =
+    schoolAge && schoolAge > 0 && enrolled > 0 ? (enrolled / schoolAge) * 100 : null;
+
+  type Stat = { label: string; value: string; tooltip?: string };
+  const stats: Stat[] = [
+    {
+      label: agg.entity_count === 1 ? "Entity" : "Entities",
+      value: agg.entity_count.toLocaleString(),
+    },
+    {
+      label: "Enrolled students",
+      value: formatInt(enrolled),
+    },
+  ];
+  if (communityPop != null) {
+    stats.push({
+      label: "Community population",
+      value: formatInt(communityPop),
+    });
+  }
+  if (captureRate != null) {
+    stats.push({
+      label: "Public-school capture",
+      value: `${captureRate.toFixed(1)}%`,
+      tooltip:
+        "Enrolled students ÷ school-age residents in district. Below ~95% suggests significant private, charter, homeschool, or cross-district enrollment.",
+    });
+  }
+  if (inc.weighted != null) {
+    stats.push({
+      label:
+        agg.entity_count > 1
+          ? "Median income (weighted)"
+          : "Median household income",
+      value: `$${inc.weighted.toLocaleString()}`,
+    });
+  }
+
+  return (
+    <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-5">
+      {stats.map((s) => (
+        <div key={s.label}>
+          <dt className="text-[11px] uppercase tracking-wide text-gray-500">
+            {s.tooltip ? (
+              <Tooltip
+                label={s.tooltip}
+                className="cursor-help underline decoration-dotted decoration-gray-300"
+              >
+                {s.label}
+              </Tooltip>
+            ) : (
+              s.label
+            )}
+          </dt>
+          <dd className="mt-0.5 text-base font-semibold tabular-nums text-gray-900">
+            {s.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+// =============================================================================
+// In-card anchor navigation
+// =============================================================================
+
+const SECTION_LABELS: Record<string, string> = {
+  race: "Race / ethnicity",
+  programs: "Programs",
+  community: "Community",
+  teachers: "Teachers & staff",
+};
+
+function AnchorNav({ sections }: { sections: string[] }) {
+  if (sections.length <= 1) return null;
+  return (
+    <nav className="flex flex-wrap gap-1 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs">
+      {sections.map((id) => (
+        <a
+          key={id}
+          href={`#${id}`}
+          className="rounded-md px-2.5 py-1 font-medium text-gray-600 hover:bg-white hover:text-gray-900"
+        >
+          {SECTION_LABELS[id]}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+// =============================================================================
+// Section wrapper — consistent heading + caption + content area
+// =============================================================================
+
+function Section({
+  id,
+  title,
+  subtitle,
+  caption,
+  children,
+}: {
+  id: string;
+  title: string;
+  subtitle?: string;
+  caption?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section id={id} className="scroll-mt-4 pt-6 first:pt-4">
+      <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+      {subtitle && (
+        <p className="mt-1 text-xs text-gray-500">{subtitle}</p>
+      )}
+      {caption && (
+        <p className="mt-1 text-[11px] uppercase tracking-wide text-gray-400">
+          {caption}
+        </p>
+      )}
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+// =============================================================================
+// Table primitives — used by every metric table
+// =============================================================================
+
+type ColAlign = "left" | "right";
+
+function MetricTable({
+  columns,
+  children,
+}: {
+  columns: { key: string; label: string; align?: ColAlign }[];
+  children: React.ReactNode;
+}) {
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="text-xs uppercase tracking-wide text-gray-500">
+          {columns.map((c) => (
+            <th
+              key={c.key}
+              className={`py-1.5 ${
+                c.align === "right" ? "text-right" : "text-left"
+              }`}
+            >
+              {c.label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>{children}</tbody>
+    </table>
+  );
+}
+
+// One row in a metric table. `value` is the primary number cell; `coverage`
+// is the small rightmost cell. Use `derived` for ratios where coverage
+// doesn't apply.
+function MetricRow({
+  label,
+  labelTooltip,
+  value,
+  valueExtra,
+  isMissing,
+  missingKind,
+  missingSource,
+  coverage,
+  total,
+  derived,
+}: {
+  label: string;
+  labelTooltip?: string;
+  value: string | null;
+  valueExtra?: string | null;
+  isMissing?: boolean;
+  missingKind?: "ccd" | "crdc" | "saipe" | "acs";
+  missingSource?: string;
+  coverage?: number;
+  total?: number;
+  derived?: boolean;
+}) {
+  const partial =
+    coverage != null && total != null && coverage > 0 && coverage < total;
+
+  return (
+    <tr className="border-t border-gray-100">
+      <td className="py-1.5">
+        {labelTooltip ? (
+          <Tooltip
+            label={labelTooltip}
+            className="cursor-help underline decoration-dotted decoration-gray-300"
+          >
+            {label}
+          </Tooltip>
+        ) : (
+          label
+        )}
+      </td>
+      <td className="py-1.5 text-right tabular-nums">
+        {isMissing ? (
+          <NotReported
+            kind={missingKind ?? "ccd"}
+            source={missingSource ?? CCD_YEAR}
+          />
+        ) : (
+          <>
+            {value ?? "—"}
+            {valueExtra && (
+              <span className="ml-1 text-xs text-gray-500">{valueExtra}</span>
+            )}
+          </>
+        )}
+      </td>
+      <td className="py-1.5 text-right text-xs text-gray-500 tabular-nums">
+        {derived ? (
+          "derived"
+        ) : coverage != null && total != null ? (
+          partial ? (
+            <Tooltip
+              label={`${coverage} of ${total} entities reported this field; the value reflects only the reporting subset.`}
+              className="cursor-help text-amber-700 underline decoration-dotted decoration-amber-300"
+            >
+              {coverage}/{total}
+            </Tooltip>
+          ) : (
+            `${coverage}/${total}`
+          )
+        ) : (
+          "—"
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function NotReported({
+  source,
+  kind,
+}: {
+  source: string;
+  kind: "ccd" | "crdc" | "saipe" | "acs";
+}) {
+  const sourceLabel =
+    kind === "crdc"
+      ? `CRDC ${source}`
+      : kind === "saipe"
+      ? `Census SAIPE ${source}`
+      : kind === "acs"
+      ? `Census ACS ${source}`
+      : `CCD ${source}`;
+  const label =
+    kind === "crdc"
+      ? `Not reported or suppressed by ${sourceLabel} for this entity`
+      : `Not reported by ${sourceLabel} for this entity`;
+  return (
+    <Tooltip
+      label={label}
+      className="cursor-help text-gray-400 underline decoration-dotted decoration-gray-300"
+    >
+      —
+    </Tooltip>
+  );
+}
+
+// =============================================================================
+// Race comparison table — 4 columns when community data is available
+// =============================================================================
 
 function RaceComparisonTable({ agg }: { agg: Aggregate }) {
   const c = agg.community;
@@ -121,83 +417,76 @@ function RaceComparisonTable({ agg }: { agg: Aggregate }) {
   const communityDenom = c.community_population_acs.total;
   const hasCommunity = c.community_population_acs.coverage > 0;
 
+  const columns = hasCommunity
+    ? [
+        { key: "group", label: "Group" },
+        { key: "enrolled", label: "Enrolled %", align: "right" as ColAlign },
+        { key: "community", label: "Community %", align: "right" as ColAlign },
+        { key: "gap", label: "Gap (pts)", align: "right" as ColAlign },
+      ]
+    : [
+        { key: "group", label: "Group" },
+        { key: "enrolled", label: "Enrolled %", align: "right" as ColAlign },
+        { key: "students", label: "Students", align: "right" as ColAlign },
+      ];
+
   return (
-    <div className="mt-3">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-xs uppercase text-gray-500">
-            <th className="py-1">Group</th>
-            <th className="py-1 text-right">
-              Enrolled students
-              <span className="ml-1 text-[10px] font-normal normal-case text-gray-400">
-                (CCD {CCD_YEAR})
-              </span>
-            </th>
-            {hasCommunity && (
-              <>
-                <th className="py-1 text-right">
-                  Community residents
-                  <span className="ml-1 text-[10px] font-normal normal-case text-gray-400">
-                    (ACS {ACS_YEAR})
-                  </span>
-                </th>
-                <th className="py-1 text-right">Gap</th>
-              </>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {RACE_FIELDS.map((f) => {
-            const b = agg.breakdown[f];
-            const enrolledPct =
-              b.coverage > 0 && enrolledDenom > 0
-                ? (b.total / enrolledDenom) * 100
-                : null;
+    <>
+      <MetricTable columns={columns}>
+        {RACE_FIELDS.map((f) => {
+          const b = agg.breakdown[f];
+          const enrolledPct =
+            b.coverage > 0 && enrolledDenom > 0
+              ? (b.total / enrolledDenom) * 100
+              : null;
 
-            const cf = ENROLLED_TO_COMMUNITY[f];
-            const cBucket = cf ? c[cf] : null;
-            const communityPct =
-              cBucket && cBucket.coverage > 0 && communityDenom > 0
-                ? (cBucket.total / communityDenom) * 100
-                : null;
+          const cf = ENROLLED_TO_COMMUNITY[f];
+          const cBucket = cf ? c[cf] : null;
+          const communityPct =
+            cBucket && cBucket.coverage > 0 && communityDenom > 0
+              ? (cBucket.total / communityDenom) * 100
+              : null;
 
-            const gap =
-              enrolledPct != null && communityPct != null
-                ? enrolledPct - communityPct
-                : null;
+          const gap =
+            enrolledPct != null && communityPct != null
+              ? enrolledPct - communityPct
+              : null;
 
-            return (
-              <tr key={f} className="border-t border-gray-100">
-                <td className="py-1.5">{DEMOGRAPHIC_LABELS[f]}</td>
+          return (
+            <tr key={f} className="border-t border-gray-100">
+              <td className="py-1.5">{DEMOGRAPHIC_LABELS[f]}</td>
+              <td className="py-1.5 text-right tabular-nums">
+                {enrolledPct != null ? `${enrolledPct.toFixed(1)}%` : "—"}
+              </td>
+              {hasCommunity ? (
+                <>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {communityPct != null
+                      ? `${communityPct.toFixed(1)}%`
+                      : "—"}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    <GapBadge gap={gap} />
+                  </td>
+                </>
+              ) : (
                 <td className="py-1.5 text-right tabular-nums">
-                  {enrolledPct != null ? `${enrolledPct.toFixed(1)}%` : "—"}
+                  {b.coverage > 0 ? formatInt(b.total) : "—"}
                 </td>
-                {hasCommunity && (
-                  <>
-                    <td className="py-1.5 text-right tabular-nums">
-                      {communityPct != null
-                        ? `${communityPct.toFixed(1)}%`
-                        : "—"}
-                    </td>
-                    <td className="py-1.5 text-right tabular-nums">
-                      <GapBadge gap={gap} />
-                    </td>
-                  </>
-                )}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+              )}
+            </tr>
+          );
+        })}
+      </MetricTable>
       {hasCommunity && (
         <p className="mt-2 text-[11px] text-gray-400">
-          Gap = enrolled% − community%. Positive means the group is
+          Gap = enrolled% − community%. Positive (blue) means
           over-represented in public-school enrollment relative to the
-          population living within the district boundary; negative means
-          under-represented.
+          population living within the district boundary; negative (amber)
+          means under-represented.
         </p>
       )}
-    </div>
+    </>
   );
 }
 
@@ -218,273 +507,256 @@ function GapBadge({ gap }: { gap: number | null }) {
   );
 }
 
+// =============================================================================
+// Programs table
+// =============================================================================
+
 function ProgramsTable({ agg }: { agg: Aggregate }) {
+  const columns = [
+    { key: "metric", label: "Metric" },
+    { key: "students", label: "Students", align: "right" as ColAlign },
+    { key: "coverage", label: "Coverage", align: "right" as ColAlign },
+  ];
   return (
     <div className="md:max-w-md">
-      <BreakdownTable title="" fields={PROGRAM_FIELDS} agg={agg} />
+      <MetricTable columns={columns}>
+        {PROGRAM_FIELDS.map((f) => {
+          const b = agg.breakdown[f];
+          const isCrdc = DEMOGRAPHIC_SOURCE[f] === CRDC_YEAR;
+          const isMissing = b.coverage === 0;
+          // Show as "count (pct%)" — students count is the headline,
+          // percent is supplementary. Single value cell so the column
+          // count stays uniform with other tables.
+          const value = isMissing
+            ? null
+            : `${formatInt(b.total)}`;
+          const extra =
+            !isMissing && b.percent != null ? `(${b.percent.toFixed(1)}%)` : null;
+          return (
+            <MetricRow
+              key={f}
+              label={DEMOGRAPHIC_LABELS[f]}
+              value={value}
+              valueExtra={extra}
+              isMissing={isMissing}
+              missingKind={isCrdc ? "crdc" : "ccd"}
+              missingSource={isCrdc ? CRDC_YEAR : CCD_YEAR}
+              coverage={b.coverage}
+              total={agg.entity_count}
+            />
+          );
+        })}
+      </MetricTable>
     </div>
   );
 }
 
-function SectionDivider({ label }: { label: string }) {
-  return (
-    <div className="mt-6 border-t border-gray-200 pt-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-        {label}
-      </h3>
-    </div>
-  );
-}
+// =============================================================================
+// Community table
+// =============================================================================
 
-function CommunitySection({ agg }: { agg: Aggregate }) {
+function CommunityTable({ agg }: { agg: Aggregate }) {
   const c = agg.community;
-  // Hide if no entity in the selection has SAIPE or ACS data — schools
-  // don't, and some federal/territory LEAs may also be missing.
-  if (
-    c.population_total.coverage === 0 &&
-    c.community_population_acs.coverage === 0
-  )
-    return null;
-
   const enrolled = agg.total_enrollment;
+  const inc = agg.median_household_income;
+
   const popTotal = c.population_total.total;
   const pop517 = c.population_5_17.total;
   const pop517pov = c.population_5_17_poverty.total;
-
   const childPovertyPct =
-    c.population_5_17.total > 0 && c.population_5_17_poverty.coverage > 0
+    pop517 > 0 && c.population_5_17_poverty.coverage > 0
       ? (pop517pov / pop517) * 100
       : null;
-
-  // Public-school capture: how many of the school-age kids in the boundary
-  // are actually enrolled in this LEA's public schools. Numbers above ~95%
-  // mean essentially everyone goes to district public; lower means lots of
-  // private/charter/homeschool/cross-district.
   const captureRate =
-    c.population_5_17.total > 0 && enrolled > 0
-      ? (enrolled / pop517) * 100
-      : null;
+    pop517 > 0 && enrolled > 0 ? (enrolled / pop517) * 100 : null;
 
-  const inc = agg.median_household_income;
+  const columns = [
+    { key: "metric", label: "Metric" },
+    { key: "value", label: "Value", align: "right" as ColAlign },
+    { key: "coverage", label: "Coverage", align: "right" as ColAlign },
+  ];
 
   return (
-    <>
-      <SectionDivider label="Community (residents in district boundary)" />
-      <div className="mt-3">
-        <p className="mb-3 text-xs text-gray-500">
-          Census-estimated population living within the geographic
-          boundaries of the selected entities — different from enrolled
-          students above. Schools have no boundary-level data and are
-          excluded from these counts.
-        </p>
-        <table className="w-full text-sm">
-          <tbody>
-            <Row
-              label="Total population"
-              value={formatInt(popTotal)}
-              coverage={c.population_total.coverage}
-              total={agg.entity_count}
-            />
-            <Row
-              label="School-age population (5–17)"
-              value={formatInt(pop517)}
-              coverage={c.population_5_17.coverage}
-              total={agg.entity_count}
-            />
-            <Row
-              label="Children in poverty (5–17)"
-              value={formatInt(pop517pov)}
-              coverage={c.population_5_17_poverty.coverage}
-              total={agg.entity_count}
-              extra={
-                childPovertyPct != null
-                  ? `(${childPovertyPct.toFixed(1)}% of school-age)`
-                  : null
-              }
-            />
-            <Row
-              label="Median household income"
-              tooltip={
-                agg.entity_count > 1
-                  ? "Population-weighted average of LEA medians (true grand median requires microdata). Approximates state-level published medians within ~1-2%."
-                  : "Median household income within the district boundary, ACS 5-year."
-              }
-              value={inc.weighted != null ? `$${inc.weighted.toLocaleString()}` : "—"}
-              coverage={inc.coverage}
-              total={agg.entity_count}
-              extra={
-                agg.entity_count > 1 && inc.weighted != null
-                  ? "(weighted)"
-                  : null
-              }
-            />
-            <Row
-              label="Public-school capture rate"
-              tooltip="Enrolled students ÷ school-age residents in district. Below ~95% suggests significant private, charter, homeschool, or cross-district enrollment."
-              value={captureRate != null ? `${captureRate.toFixed(1)}%` : "—"}
-              derived
-            />
-          </tbody>
-        </table>
-      </div>
-    </>
+    <MetricTable columns={columns}>
+      <MetricRow
+        label="Total population"
+        value={
+          c.population_total.coverage > 0 ? formatInt(popTotal) : null
+        }
+        isMissing={c.population_total.coverage === 0}
+        missingKind="saipe"
+        missingSource={SAIPE_YEAR}
+        coverage={c.population_total.coverage}
+        total={agg.entity_count}
+      />
+      <MetricRow
+        label="School-age population (5–17)"
+        value={c.population_5_17.coverage > 0 ? formatInt(pop517) : null}
+        isMissing={c.population_5_17.coverage === 0}
+        missingKind="saipe"
+        missingSource={SAIPE_YEAR}
+        coverage={c.population_5_17.coverage}
+        total={agg.entity_count}
+      />
+      <MetricRow
+        label="Children in poverty (5–17)"
+        value={
+          c.population_5_17_poverty.coverage > 0
+            ? formatInt(pop517pov)
+            : null
+        }
+        valueExtra={
+          childPovertyPct != null
+            ? `(${childPovertyPct.toFixed(1)}% of school-age)`
+            : null
+        }
+        isMissing={c.population_5_17_poverty.coverage === 0}
+        missingKind="saipe"
+        missingSource={SAIPE_YEAR}
+        coverage={c.population_5_17_poverty.coverage}
+        total={agg.entity_count}
+      />
+      <MetricRow
+        label="Median household income"
+        labelTooltip={
+          agg.entity_count > 1
+            ? "Population-weighted average of LEA medians (true grand median requires microdata). Approximates state-level published medians within ~1–2%."
+            : "Median household income within the district boundary."
+        }
+        value={
+          inc.weighted != null ? `$${inc.weighted.toLocaleString()}` : null
+        }
+        valueExtra={
+          agg.entity_count > 1 && inc.weighted != null ? "(weighted)" : null
+        }
+        isMissing={inc.coverage === 0}
+        missingKind="acs"
+        missingSource={ACS_YEAR}
+        coverage={inc.coverage}
+        total={agg.entity_count}
+      />
+      <MetricRow
+        label="Public-school capture rate"
+        labelTooltip="Enrolled students ÷ school-age residents in district. Below ~95% suggests significant private, charter, homeschool, or cross-district enrollment."
+        value={captureRate != null ? `${captureRate.toFixed(1)}%` : null}
+        derived
+      />
+    </MetricTable>
   );
 }
 
-function Row({
-  label,
-  value,
-  coverage,
-  total,
-  extra,
-  derived,
-  tooltip,
-}: {
-  label: string;
-  value: string;
-  coverage?: number;
-  total?: number;
-  extra?: string | null;
-  derived?: boolean;
-  tooltip?: string;
-}) {
-  const partial =
-    coverage != null && total != null && coverage > 0 && coverage < total;
-  return (
-    <tr className="border-t border-gray-100">
-      <td className="py-1.5">
-        {tooltip ? (
-          <Tooltip
-            label={tooltip}
-            className="cursor-help underline decoration-dotted decoration-gray-300"
-          >
-            {label}
-          </Tooltip>
-        ) : (
-          label
-        )}
-      </td>
-      <td className="py-1.5 text-right tabular-nums">
-        {value}
-        {extra && <span className="ml-1 text-xs text-gray-500">{extra}</span>}
-      </td>
-      <td className="py-1.5 text-right text-xs text-gray-500 tabular-nums">
-        {derived ? (
-          "derived"
-        ) : coverage != null && total != null ? (
-          partial ? (
-            <Tooltip
-              label={`${coverage} of ${total} entities reported.`}
-              className="cursor-help text-amber-700 underline decoration-dotted decoration-amber-300"
-            >
-              {coverage}/{total}
-            </Tooltip>
-          ) : (
-            `${coverage}/${total}`
-          )
-        ) : (
-          "—"
-        )}
-      </td>
-    </tr>
-  );
-}
+// =============================================================================
+// Teachers & staff table
+// =============================================================================
 
-function StaffSection({ agg }: { agg: Aggregate }) {
+function TeachersTable({ agg }: { agg: Aggregate }) {
   const s = agg.staff;
   const enrollment = agg.total_enrollment;
 
+  const columns = [
+    { key: "metric", label: "Metric" },
+    { key: "value", label: "Value", align: "right" as ColAlign },
+    { key: "coverage", label: "Coverage", align: "right" as ColAlign },
+  ];
+
   type Row = {
+    key: string;
     label: string;
-    value: string;
-    coverage?: { reporting: number; total: number };
-    source: string;
+    value: string | null;
+    valueExtra?: string | null;
+    coverage?: number;
+    total?: number;
+    derived?: boolean;
+    isMissing?: boolean;
     kind: "ccd" | "crdc";
-    derivedFrom?: "teachers" | "counselors";
     hide: boolean;
   };
 
-  // A row is hidden when nothing in the current selection can populate it:
-  // direct FTE fields are hidden at coverage===0, and the two derived ratios
-  // are hidden when their underlying denominator is 0 (no teachers or no
-  // counselors reported). This auto-hides first-year and absent-teacher
-  // rows for the entire CRDC 2021-22 release, which suppressed both fields
-  // nationwide, but they'll come back automatically once a future CRDC
-  // cycle publishes them again.
   const rows: Row[] = [
     {
+      key: "teachers",
       label: "Teachers FTE",
-      value: formatFte(s.teachers_fte.coverage > 0 ? s.teachers_fte.total : null),
-      coverage: { reporting: s.teachers_fte.coverage, total: agg.entity_count },
-      source: CCD_YEAR,
+      value:
+        s.teachers_fte.coverage > 0
+          ? formatFte(s.teachers_fte.total)
+          : null,
+      coverage: s.teachers_fte.coverage,
+      total: agg.entity_count,
+      isMissing: s.teachers_fte.coverage === 0,
       kind: "ccd",
       hide: s.teachers_fte.coverage === 0,
     },
     {
+      key: "st_ratio",
       label: "Student : teacher ratio",
       value: formatRatio(
         s.teachers_fte.total > 0 ? enrollment : null,
         s.teachers_fte.total > 0 ? s.teachers_fte.total : null
       ),
-      source: CCD_YEAR,
+      derived: true,
       kind: "ccd",
-      derivedFrom: "teachers",
       hide: s.teachers_fte.total <= 0,
     },
     {
+      key: "counselors",
       label: "Counselors FTE",
-      value: formatFte(
-        s.counselors_fte.coverage > 0 ? s.counselors_fte.total : null
-      ),
-      coverage: {
-        reporting: s.counselors_fte.coverage,
-        total: agg.entity_count,
-      },
-      source: CCD_YEAR,
+      value:
+        s.counselors_fte.coverage > 0
+          ? formatFte(s.counselors_fte.total)
+          : null,
+      coverage: s.counselors_fte.coverage,
+      total: agg.entity_count,
+      isMissing: s.counselors_fte.coverage === 0,
       kind: "ccd",
       hide: s.counselors_fte.coverage === 0,
     },
     {
+      key: "sc_ratio",
       label: "Student : counselor ratio",
       value: formatRatio(
         s.counselors_fte.total > 0 ? enrollment : null,
         s.counselors_fte.total > 0 ? s.counselors_fte.total : null
       ),
-      source: CCD_YEAR,
+      derived: true,
       kind: "ccd",
-      derivedFrom: "counselors",
       hide: s.counselors_fte.total <= 0,
     },
     {
+      key: "certified",
       label: "Certified teachers",
-      value: percentOfTeachers(s.teachers_certified_fte.total, s.teachers_fte.total),
-      coverage: {
-        reporting: s.teachers_certified_fte.coverage,
-        total: agg.entity_count,
-      },
-      source: CRDC_YEAR,
+      value: percentOfTeachers(
+        s.teachers_certified_fte.total,
+        s.teachers_fte.total
+      ),
+      coverage: s.teachers_certified_fte.coverage,
+      total: agg.entity_count,
+      isMissing: s.teachers_certified_fte.coverage === 0,
       kind: "crdc",
       hide: s.teachers_certified_fte.coverage === 0,
     },
     {
+      key: "first_year",
       label: "First-year teachers",
-      value: percentOfTeachers(s.teachers_first_year_fte.total, s.teachers_fte.total),
-      coverage: {
-        reporting: s.teachers_first_year_fte.coverage,
-        total: agg.entity_count,
-      },
-      source: CRDC_YEAR,
+      value: percentOfTeachers(
+        s.teachers_first_year_fte.total,
+        s.teachers_fte.total
+      ),
+      coverage: s.teachers_first_year_fte.coverage,
+      total: agg.entity_count,
+      isMissing: s.teachers_first_year_fte.coverage === 0,
       kind: "crdc",
       hide: s.teachers_first_year_fte.coverage === 0,
     },
     {
+      key: "absent",
       label: "Teachers absent >10 days",
-      value: percentOfTeachers(s.teachers_absent_fte.total, s.teachers_fte.total),
-      coverage: {
-        reporting: s.teachers_absent_fte.coverage,
-        total: agg.entity_count,
-      },
-      source: CRDC_YEAR,
+      value: percentOfTeachers(
+        s.teachers_absent_fte.total,
+        s.teachers_fte.total
+      ),
+      coverage: s.teachers_absent_fte.coverage,
+      total: agg.entity_count,
+      isMissing: s.teachers_absent_fte.coverage === 0,
       kind: "crdc",
       hide: s.teachers_absent_fte.coverage === 0,
     },
@@ -494,128 +766,137 @@ function StaffSection({ agg }: { agg: Aggregate }) {
   if (visible.length === 0) return null;
 
   return (
-    <div className="mt-3">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-xs uppercase text-gray-500">
-            <th className="py-1">Metric</th>
-            <th className="py-1 text-right">Value</th>
-            <th className="py-1 text-right">Coverage</th>
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map((r) => {
-            const partial =
-              r.coverage &&
-              r.coverage.reporting > 0 &&
-              r.coverage.reporting < r.coverage.total;
-            const zero = r.coverage && r.coverage.reporting === 0;
-            const isCrdc = r.kind === "crdc";
-            return (
-              <tr key={r.label} className="border-t border-gray-100">
-                <td className="py-1.5">
-                  {r.label}
-                  {isCrdc && (
-                    <span className="ml-1 text-[10px] text-gray-400">
-                      (CRDC {CRDC_YEAR})
-                    </span>
-                  )}
-                </td>
-                <td className="py-1.5 text-right tabular-nums">
-                  {zero ? (
-                    <NotReported source={r.source} kind={r.kind} />
-                  ) : (
-                    r.value
-                  )}
-                </td>
-                <td className="py-1.5 text-right text-xs text-gray-500 tabular-nums">
-                  {r.derivedFrom
-                    ? "derived"
-                    : r.coverage
-                    ? partial ? (
-                        <Tooltip
-                          label={`${r.coverage.reporting} of ${r.coverage.total} entities reported this field.`}
-                          className="cursor-help text-amber-700 underline decoration-dotted decoration-amber-300"
-                        >
-                          {r.coverage.reporting}/{r.coverage.total}
-                        </Tooltip>
-                      ) : (
-                        `${r.coverage.reporting}/${r.coverage.total}`
-                      )
-                    : "—"}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <MetricTable columns={columns}>
+      {visible.map((r) => (
+        <MetricRow
+          key={r.key}
+          label={r.label}
+          value={r.value}
+          valueExtra={r.valueExtra}
+          isMissing={r.isMissing}
+          missingKind={r.kind}
+          missingSource={r.kind === "crdc" ? CRDC_YEAR : CCD_YEAR}
+          coverage={r.coverage}
+          total={r.total}
+          derived={r.derived}
+        />
+      ))}
+    </MetricTable>
   );
 }
 
-function percentOfTeachers(
-  numerator: number,
-  teachers: number
-): string {
-  if (teachers <= 0 || numerator <= 0) return "—";
+function percentOfTeachers(numerator: number, teachers: number): string | null {
+  if (teachers <= 0 || numerator <= 0) return null;
   return `${((numerator / teachers) * 100).toFixed(1)}%`;
 }
 
-function NotReported({
-  source,
-  kind,
-}: {
-  source: string;
-  kind: "ccd" | "crdc";
-}) {
-  // CRDC null = often CRDC suppression for that entity (cell or whole-district
-  // withhold, as with SFUSD 2021-22 LEP). CCD null just means the directory
-  // didn't publish the value.
-  const label =
-    kind === "crdc"
-      ? `Not reported or suppressed by CRDC ${source} for this entity`
-      : `Not reported by CCD ${source} for this entity`;
+// =============================================================================
+// Included entities — separate card, matched header style
+// =============================================================================
+
+function EntitiesCard({ entities }: { entities: Entity[] }) {
   return (
-    <Tooltip
-      label={label}
-      className="cursor-help text-gray-400 underline decoration-dotted decoration-gray-300"
-    >
-      —
-    </Tooltip>
+    <div className="rounded-lg border border-gray-300 bg-white">
+      <div className="border-b border-gray-200 px-5 py-4">
+        <h2 className="text-lg font-semibold">
+          Included entities{" "}
+          <span className="text-sm font-normal text-gray-500">
+            ({entities.length})
+          </span>
+        </h2>
+      </div>
+      <div className="max-h-[420px] overflow-y-auto px-5 py-3">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-white">
+            <tr className="text-xs uppercase tracking-wide text-gray-500">
+              <th className="py-2 text-left">Name</th>
+              <th className="py-2 text-left">Type</th>
+              <th className="py-2 text-left">State</th>
+              <th className="py-2 text-left">NCES ID</th>
+              <th className="py-2 text-right">Enrollment</th>
+              <th className="py-2 text-right">FRL</th>
+              <th className="py-2 text-right">EL</th>
+              <th className="py-2 text-right">SWD</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entities.map((e) => (
+              <tr key={e.id} className="border-t border-gray-100">
+                <td className="py-2 font-medium">{e.name}</td>
+                <td className="py-2 text-xs uppercase text-gray-500">
+                  {e.entity_type}
+                </td>
+                <td className="py-2">{e.state ?? "—"}</td>
+                <td className="py-2 font-mono text-xs">{e.nces_id}</td>
+                <td className="py-2 text-right tabular-nums">
+                  {e.total_enrollment == null ? (
+                    <NotReported source={CCD_YEAR} kind="ccd" />
+                  ) : (
+                    formatInt(e.total_enrollment)
+                  )}
+                </td>
+                <PctCell
+                  value={e.frl_eligible}
+                  enrollment={e.total_enrollment}
+                  kind="ccd"
+                  source={CCD_YEAR}
+                />
+                <PctCell
+                  value={e.english_learners}
+                  enrollment={e.total_enrollment}
+                  kind="crdc"
+                  source={CRDC_YEAR}
+                />
+                <PctCell
+                  value={e.swd}
+                  enrollment={e.total_enrollment}
+                  kind="crdc"
+                  source={CRDC_YEAR}
+                />
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
 function PctCell({
   value,
   enrollment,
-  source,
   kind,
+  source,
 }: {
   value: number | null;
   enrollment: number | null;
-  source: string;
   kind: "ccd" | "crdc";
+  source: string;
 }) {
   if (value == null) {
     return (
-      <td className="px-2 py-2 text-right">
+      <td className="py-2 text-right">
         <NotReported source={source} kind={kind} />
       </td>
     );
   }
   if (!enrollment) {
     return (
-      <td className="px-2 py-2 text-right" title="No enrollment denominator">
+      <td className="py-2 text-right tabular-nums">
         <span className="text-gray-400">{formatInt(value)}</span>
       </td>
     );
   }
   return (
-    <td className="px-2 py-2 text-right">
+    <td className="py-2 text-right tabular-nums">
       {`${((value / enrollment) * 100).toFixed(0)}%`}
     </td>
   );
 }
+
+// =============================================================================
+// Export menu (unchanged behavior, lifted out for layout)
+// =============================================================================
 
 function ExportMenu({ agg, entities }: Props) {
   function download(name: string, mime: string, body: string) {
@@ -750,81 +1031,6 @@ function ExportMenu({ agg, entities }: Props) {
           </button>
         </div>
       </details>
-    </div>
-  );
-}
-
-function BreakdownTable({
-  title,
-  fields,
-  agg,
-}: {
-  title: string;
-  fields: DemographicField[];
-  agg: Aggregate;
-}) {
-  return (
-    <div>
-      {title && (
-        <h3 className="mb-2 text-sm font-semibold text-gray-700">{title}</h3>
-      )}
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-xs uppercase text-gray-500">
-            <th className="py-1">Category</th>
-            <th className="py-1 text-right">Students</th>
-            <th className="py-1 text-right">%</th>
-          </tr>
-        </thead>
-        <tbody>
-          {fields.map((f) => {
-            const b = agg.breakdown[f];
-            const isCrdc = DEMOGRAPHIC_SOURCE[f] === CRDC_YEAR;
-            const partial = b.coverage > 0 && b.coverage < agg.entity_count;
-            const zero = b.coverage === 0;
-            return (
-              <tr key={f} className="border-t border-gray-100">
-                <td className="py-1.5">
-                  {DEMOGRAPHIC_LABELS[f]}
-                  {isCrdc && (
-                    <span
-                      className="ml-1 text-[10px] text-gray-400"
-                      title={`Source: CRDC ${CRDC_YEAR}`}
-                    >
-                      (CRDC {CRDC_YEAR})
-                    </span>
-                  )}
-                </td>
-                <td className="py-1.5 text-right tabular-nums">
-                  {zero ? (
-                    <NotReported
-                      source={isCrdc ? CRDC_YEAR : CCD_YEAR}
-                      kind={isCrdc ? "crdc" : "ccd"}
-                    />
-                  ) : (
-                    formatInt(b.total)
-                  )}
-                </td>
-                <td className="py-1.5 text-right tabular-nums">
-                  {partial ? (
-                    <Tooltip
-                      label={`${b.coverage} of ${agg.entity_count} entities reported this field; percentage reflects only the reporting subset.`}
-                      className="cursor-help text-amber-700 underline decoration-dotted decoration-amber-300"
-                    >
-                      {formatPct(b.percent)}
-                      <span className="ml-1 text-[10px]">
-                        ({b.coverage}/{agg.entity_count})
-                      </span>
-                    </Tooltip>
-                  ) : (
-                    <span>{formatPct(b.percent)}</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
     </div>
   );
 }
