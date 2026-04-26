@@ -572,41 +572,61 @@ function GapBadge({ gap }: { gap: number | null }) {
 // =============================================================================
 
 function ProgramsTable({ agg }: { agg: Aggregate }) {
-  const columns = [
-    { key: "metric", label: "Metric" },
-    { key: "students", label: "Students", align: "right" as ColAlign },
-    { key: "coverage", label: "Coverage", align: "right" as ColAlign },
-  ];
+  // Programs has a meaningful percent (share of enrolled students), so —
+  // matching the Race table — give the percent its own column rather than
+  // squashing it into the value cell as a parenthetical. Coverage stays
+  // in the rightmost column.
   return (
-    <div className="md:max-w-md">
-      <MetricTable columns={columns}>
-        {PROGRAM_FIELDS.map((f) => {
-          const b = agg.breakdown[f];
-          const isCrdc = DEMOGRAPHIC_SOURCE[f] === CRDC_YEAR;
-          const isMissing = b.coverage === 0;
-          // Show as "count (pct%)" — students count is the headline,
-          // percent is supplementary. Single value cell so the column
-          // count stays uniform with other tables.
-          const value = isMissing
-            ? null
-            : `${formatInt(b.total)}`;
-          const extra =
-            !isMissing && b.percent != null ? `(${b.percent.toFixed(1)}%)` : null;
-          return (
-            <MetricRow
-              key={f}
-              label={DEMOGRAPHIC_LABELS[f]}
-              value={value}
-              valueExtra={extra}
-              isMissing={isMissing}
-              missingKind={isCrdc ? "crdc" : "ccd"}
-              missingSource={isCrdc ? CRDC_YEAR : CCD_YEAR}
-              coverage={b.coverage}
-              total={agg.entity_count}
-            />
-          );
-        })}
-      </MetricTable>
+    <div className="md:max-w-xl">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-xs uppercase tracking-wide text-gray-500">
+            <th className="py-1.5 text-left">Metric</th>
+            <th className="py-1.5 text-right">Students</th>
+            <th className="py-1.5 text-right">% of enrolled</th>
+            <th className="py-1.5 text-right">Coverage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {PROGRAM_FIELDS.map((f) => {
+            const b = agg.breakdown[f];
+            const isCrdc = DEMOGRAPHIC_SOURCE[f] === CRDC_YEAR;
+            const isMissing = b.coverage === 0;
+            const partial =
+              b.coverage > 0 && b.coverage < agg.entity_count;
+            return (
+              <tr key={f} className="border-t border-gray-100">
+                <td className="py-1.5">{DEMOGRAPHIC_LABELS[f]}</td>
+                <td className="py-1.5 text-right tabular-nums">
+                  {isMissing ? (
+                    <NotReported
+                      kind={isCrdc ? "crdc" : "ccd"}
+                      source={isCrdc ? CRDC_YEAR : CCD_YEAR}
+                    />
+                  ) : (
+                    formatInt(b.total)
+                  )}
+                </td>
+                <td className="py-1.5 text-right tabular-nums">
+                  {isMissing ? "—" : formatPct(b.percent)}
+                </td>
+                <td className="py-1.5 text-right text-xs text-gray-500 tabular-nums">
+                  {partial ? (
+                    <Tooltip
+                      label={`${b.coverage} of ${agg.entity_count} entities reported this field; the value reflects only the reporting subset.`}
+                      className="cursor-help text-amber-700 underline decoration-dotted decoration-amber-300"
+                    >
+                      {b.coverage}/{agg.entity_count}
+                    </Tooltip>
+                  ) : (
+                    `${b.coverage}/${agg.entity_count}`
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
