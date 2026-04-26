@@ -78,7 +78,7 @@ export function ResultsPanel({ agg, entities }: Props) {
             <Section
               id="community"
               title="Community"
-              subtitle="Residents in the district boundary, not enrolled students. Excludes schools."
+              subtitle="Residents in the district boundary, not enrolled students. Available for districts and states only — Census doesn't publish population at the school level."
               caption={`SAIPE ${SAIPE_YEAR} • ACS ${ACS_YEAR}`}
             >
               <CommunityTable agg={agg} />
