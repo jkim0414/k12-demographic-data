@@ -154,10 +154,23 @@ function HeadlineStrip({ agg }: { agg: Aggregate }) {
       value: formatInt(enrolled),
     },
   ];
+  // School-age population is the actual denominator for capture rate;
+  // surface it next to enrolled so users don't mentally divide enrolled
+  // by total community population.
+  if (schoolAge != null) {
+    stats.push({
+      label: "School-age (5–17)",
+      value: formatInt(schoolAge),
+      tooltip:
+        "Census-estimated population aged 5–17 living within the district boundary. The denominator for public-school capture rate.",
+    });
+  }
   if (communityPop != null) {
     stats.push({
       label: "Community population",
       value: formatInt(communityPop),
+      tooltip:
+        "Total residents of all ages within the district boundary. Use the school-age figure, not this one, when reasoning about how many kids attend public schools.",
     });
   }
   if (captureRate != null) {
@@ -179,7 +192,7 @@ function HeadlineStrip({ agg }: { agg: Aggregate }) {
   }
 
   return (
-    <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-5">
+    <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
       {stats.map((s) => (
         <div key={s.label}>
           <dt className="text-[11px] uppercase tracking-wide text-gray-500">
@@ -217,12 +230,15 @@ const SECTION_LABELS: Record<string, string> = {
 function AnchorNav({ sections }: { sections: string[] }) {
   if (sections.length <= 1) return null;
   return (
-    <nav className="flex flex-wrap gap-1 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs">
+    <nav className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 px-5 py-3 text-xs">
+      <span className="font-medium uppercase tracking-wide text-gray-500">
+        Jump to
+      </span>
       {sections.map((id) => (
         <a
           key={id}
           href={`#${id}`}
-          className="rounded-md px-2.5 py-1 font-medium text-gray-600 hover:bg-white hover:text-gray-900"
+          className="rounded-md border border-gray-300 bg-white px-2.5 py-1 font-medium text-gray-700 shadow-sm hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
         >
           {SECTION_LABELS[id]}
         </a>
@@ -299,8 +315,13 @@ function MetricTable({
 }
 
 // One row in a metric table. `value` is the primary number cell; `coverage`
-// is the small rightmost cell. Use `derived` for ratios where coverage
-// doesn't apply.
+// / `total` populate the small rightmost cell. For derived rows (ratios,
+// rates), pass the *limiting* underlying coverage — e.g. for the
+// student:teacher ratio that's teachers_fte.coverage, since enrollment
+// is universally reported. Don't use a separate "derived" sentinel; doing
+// so would conflate "this row is computed" with "this row's data
+// coverage" and the ratio is only valid for the entities that reported
+// the underlying inputs anyway.
 function MetricRow({
   label,
   labelTooltip,
@@ -311,7 +332,6 @@ function MetricRow({
   missingSource,
   coverage,
   total,
-  derived,
 }: {
   label: string;
   labelTooltip?: string;
@@ -322,7 +342,6 @@ function MetricRow({
   missingSource?: string;
   coverage?: number;
   total?: number;
-  derived?: boolean;
 }) {
   const partial =
     coverage != null && total != null && coverage > 0 && coverage < total;
@@ -357,9 +376,7 @@ function MetricRow({
         )}
       </td>
       <td className="py-1.5 text-right text-xs text-gray-500 tabular-nums">
-        {derived ? (
-          "derived"
-        ) : coverage != null && total != null ? (
+        {coverage != null && total != null ? (
           partial ? (
             <Tooltip
               label={`${coverage} of ${total} entities reported this field; the value reflects only the reporting subset.`}
@@ -416,6 +433,20 @@ function RaceComparisonTable({ agg }: { agg: Aggregate }) {
   const enrolledDenom = agg.total_enrollment;
   const communityDenom = c.community_population_acs.total;
   const hasCommunity = c.community_population_acs.coverage > 0;
+
+  // Race fields generally have uniform coverage across racial groups for a
+  // given entity (an entity either reports race breakdown or not), so we
+  // surface coverage once below the table rather than per row. Use the
+  // 'white' field's coverage as representative; in practice it's the same
+  // across all race fields.
+  const enrolledRaceCoverage = agg.breakdown.white.coverage;
+  const communityRaceCoverage = c.community_white.coverage;
+  const enrolledPartial =
+    enrolledRaceCoverage > 0 && enrolledRaceCoverage < agg.entity_count;
+  const communityPartial =
+    hasCommunity &&
+    communityRaceCoverage > 0 &&
+    communityRaceCoverage < agg.entity_count;
 
   const columns = hasCommunity
     ? [
@@ -478,14 +509,43 @@ function RaceComparisonTable({ agg }: { agg: Aggregate }) {
           );
         })}
       </MetricTable>
-      {hasCommunity && (
-        <p className="mt-2 text-[11px] text-gray-400">
-          Gap = enrolled% − community%. Positive (blue) means
-          over-represented in public-school enrollment relative to the
-          population living within the district boundary; negative (amber)
-          means under-represented.
-        </p>
-      )}
+      <div className="mt-2 space-y-1">
+        {hasCommunity && (
+          <p className="text-[11px] text-gray-400">
+            Gap = enrolled% − community%. Positive (blue) means
+            over-represented in public-school enrollment relative to the
+            population living within the district boundary; negative
+            (amber) means under-represented.
+          </p>
+        )}
+        {(enrolledPartial || communityPartial) && (
+          <p className="text-[11px] text-gray-500">
+            Coverage:{" "}
+            <span
+              className={
+                enrolledPartial ? "text-amber-700" : "text-gray-500"
+              }
+            >
+              {enrolledRaceCoverage}/{agg.entity_count} entities reported
+              enrolled race
+            </span>
+            {hasCommunity && (
+              <>
+                {" "}·{" "}
+                <span
+                  className={
+                    communityPartial ? "text-amber-700" : "text-gray-500"
+                  }
+                >
+                  {communityRaceCoverage}/{agg.entity_count} reported
+                  community race
+                </span>
+              </>
+            )}
+            .
+          </p>
+        )}
+      </div>
     </>
   );
 }
@@ -637,9 +697,10 @@ function CommunityTable({ agg }: { agg: Aggregate }) {
       />
       <MetricRow
         label="Public-school capture rate"
-        labelTooltip="Enrolled students ÷ school-age residents in district. Below ~95% suggests significant private, charter, homeschool, or cross-district enrollment."
+        labelTooltip="Enrolled students ÷ school-age residents in district. Below ~95% suggests significant private, charter, homeschool, or cross-district enrollment. Coverage reflects entities with both an enrollment count and a SAIPE school-age estimate."
         value={captureRate != null ? `${captureRate.toFixed(1)}%` : null}
-        derived
+        coverage={c.population_5_17.coverage}
+        total={agg.entity_count}
       />
     </MetricTable>
   );
@@ -662,11 +723,11 @@ function TeachersTable({ agg }: { agg: Aggregate }) {
   type Row = {
     key: string;
     label: string;
+    labelTooltip?: string;
     value: string | null;
     valueExtra?: string | null;
     coverage?: number;
     total?: number;
-    derived?: boolean;
     isMissing?: boolean;
     kind: "ccd" | "crdc";
     hide: boolean;
@@ -689,11 +750,14 @@ function TeachersTable({ agg }: { agg: Aggregate }) {
     {
       key: "st_ratio",
       label: "Student : teacher ratio",
+      labelTooltip:
+        "Enrollment ÷ teacher FTE. Coverage reflects entities that reported teacher FTE (enrollment is essentially universal in CCD).",
       value: formatRatio(
         s.teachers_fte.total > 0 ? enrollment : null,
         s.teachers_fte.total > 0 ? s.teachers_fte.total : null
       ),
-      derived: true,
+      coverage: s.teachers_fte.coverage,
+      total: agg.entity_count,
       kind: "ccd",
       hide: s.teachers_fte.total <= 0,
     },
@@ -713,11 +777,14 @@ function TeachersTable({ agg }: { agg: Aggregate }) {
     {
       key: "sc_ratio",
       label: "Student : counselor ratio",
+      labelTooltip:
+        "Enrollment ÷ counselor FTE. Coverage reflects entities that reported counselor FTE.",
       value: formatRatio(
         s.counselors_fte.total > 0 ? enrollment : null,
         s.counselors_fte.total > 0 ? s.counselors_fte.total : null
       ),
-      derived: true,
+      coverage: s.counselors_fte.coverage,
+      total: agg.entity_count,
       kind: "ccd",
       hide: s.counselors_fte.total <= 0,
     },
@@ -771,6 +838,7 @@ function TeachersTable({ agg }: { agg: Aggregate }) {
         <MetricRow
           key={r.key}
           label={r.label}
+          labelTooltip={r.labelTooltip}
           value={r.value}
           valueExtra={r.valueExtra}
           isMissing={r.isMissing}
@@ -778,7 +846,6 @@ function TeachersTable({ agg }: { agg: Aggregate }) {
           missingSource={r.kind === "crdc" ? CRDC_YEAR : CCD_YEAR}
           coverage={r.coverage}
           total={r.total}
-          derived={r.derived}
         />
       ))}
     </MetricTable>
