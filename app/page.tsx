@@ -69,6 +69,7 @@ export default function Page() {
         <p className="mt-1 text-sm text-gray-600">
           Aggregate enrollment, demographics, staff, and community data
           for U.S. schools, districts, and state education agencies.
+          Sources: NCES CCD, CRDC, and Census (SAIPE + ACS).
         </p>
       </header>
 
