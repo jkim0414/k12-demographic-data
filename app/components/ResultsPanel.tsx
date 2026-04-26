@@ -56,8 +56,8 @@ export function ResultsPanel({ agg, entities }: Props) {
               title="Race / ethnicity"
               caption={
                 agg.community.community_population_acs.coverage > 0
-                  ? `Enrolled students from CCD ${CCD_YEAR} • Community residents from ACS ${ACS_YEAR}`
-                  : `Enrolled students from CCD ${CCD_YEAR}`
+                  ? `CCD ${CCD_YEAR} • ACS ${ACS_YEAR}`
+                  : `CCD ${CCD_YEAR}`
               }
             >
               <RaceComparisonTable agg={agg} />
@@ -67,8 +67,8 @@ export function ResultsPanel({ agg, entities }: Props) {
           {sections.includes("programs") && (
             <Section
               id="programs"
-              title="Programs (enrolled students)"
-              caption={`FRL from CCD ${CCD_YEAR} • EL and SWD from CRDC ${CRDC_YEAR}`}
+              title="Programs"
+              caption={`CCD ${CCD_YEAR} • CRDC ${CRDC_YEAR}`}
             >
               <ProgramsTable agg={agg} />
             </Section>
@@ -78,8 +78,8 @@ export function ResultsPanel({ agg, entities }: Props) {
             <Section
               id="community"
               title="Community"
-              subtitle="Residents living within the district boundary — not enrolled students. Schools are excluded; boundary-level data only exists for LEAs and SEAs."
-              caption={`Population and child poverty from Census SAIPE ${SAIPE_YEAR} • Median income from Census ACS ${ACS_YEAR}`}
+              subtitle="Residents in the district boundary, not enrolled students. Excludes schools."
+              caption={`SAIPE ${SAIPE_YEAR} • ACS ${ACS_YEAR}`}
             >
               <CommunityTable agg={agg} />
             </Section>
@@ -89,7 +89,7 @@ export function ResultsPanel({ agg, entities }: Props) {
             <Section
               id="teachers"
               title="Teachers & staff"
-              caption={`FTE counts from CCD ${CCD_YEAR} • Certification from CRDC ${CRDC_YEAR}`}
+              caption={`CCD ${CCD_YEAR} • CRDC ${CRDC_YEAR}`}
             >
               <TeachersTable agg={agg} />
             </Section>
@@ -515,37 +515,24 @@ function RaceComparisonTable({ agg }: { agg: Aggregate }) {
       <div className="mt-2 space-y-1">
         {hasCommunity && (
           <p className="text-[11px] text-gray-400">
-            Gap = enrolled% − community%. Positive (blue) means
-            over-represented in public-school enrollment relative to the
-            population living within the district boundary; negative
-            (amber) means under-represented.
+            Gap = enrolled% − community%. Blue: over-represented in
+            enrollment. Amber: under-represented.
           </p>
         )}
         {(enrolledPartial || communityPartial) && (
           <p className="text-[11px] text-gray-500">
             Coverage:{" "}
-            <span
-              className={
-                enrolledPartial ? "text-amber-700" : "text-gray-500"
-              }
-            >
-              {enrolledRaceCoverage}/{agg.entity_count} entities reported
-              enrolled race
+            <span className={enrolledPartial ? "text-amber-700" : ""}>
+              enrolled {enrolledRaceCoverage}/{agg.entity_count}
             </span>
             {hasCommunity && (
               <>
                 {" "}·{" "}
-                <span
-                  className={
-                    communityPartial ? "text-amber-700" : "text-gray-500"
-                  }
-                >
-                  {communityRaceCoverage}/{agg.entity_count} reported
-                  community race
+                <span className={communityPartial ? "text-amber-700" : ""}>
+                  community {communityRaceCoverage}/{agg.entity_count}
                 </span>
               </>
             )}
-            .
           </p>
         )}
       </div>

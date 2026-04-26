@@ -62,22 +62,13 @@ export default function Page() {
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
-      <header className="mb-8">
+      <header className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">
           K-12 District Data Explorer
         </h1>
         <p className="mt-1 text-sm text-gray-600">
-          Look up and aggregate data for U.S. schools, districts (LEAs),
-          and state education agencies. Combines four sources joined to
-          NCES districts: NCES Common Core of Data (enrollment, enrolled
-          race/ethnicity, FRL, staff FTE), Civil Rights Data Collection
-          (English learners, students with disabilities, teacher
-          certification and quality), Census SAIPE (population and
-          school-age poverty within district boundaries), and Census
-          ACS 5-year (community race/ethnicity and median household
-          income). Search by name with fuzzy matching, by NCES code or
-          2-letter state code with exact matching, or upload a
-          spreadsheet of entities.
+          Aggregate enrollment, demographics, staff, and community data
+          for U.S. schools, districts, and state education agencies.
         </p>
       </header>
 

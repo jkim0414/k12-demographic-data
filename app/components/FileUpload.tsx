@@ -76,13 +76,9 @@ export function FileUpload({ onMatched }: Props) {
         <p className="mt-2 text-sm text-red-700">{error}</p>
       )}
       <p className="mt-1 text-xs text-gray-500">
-        CSV, TSV, or XLSX. The first row must be a header. We look for either
-        an NCES-ID column (any of <code>nces_id</code>, <code>leaid</code>,{" "}
-        <code>ncessch</code>, <code>district_id</code>, <code>school_id</code>) or
-        a name column (any of <code>name</code>, <code>school_name</code>,{" "}
-        <code>district_name</code>, <code>lea_name</code>). If both are present,
-        the NCES ID is used first (exact match) and the name is used as a
-        fallback (fuzzy match). A single-column file is treated as names.
+        CSV, TSV, or XLSX with a header row. Recognized columns:{" "}
+        <code>nces_id</code> / <code>leaid</code> / <code>ncessch</code>{" "}
+        (exact match) or <code>name</code> (fuzzy match).
       </p>
     </div>
   );
