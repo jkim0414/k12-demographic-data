@@ -109,9 +109,14 @@ export function formatInt(v: number | null): string {
 
 export function formatFte(v: number | null): string {
   if (v == null) return "—";
-  // FTE counts at LEA/SEA scale are big (5-digit) so drop the decimal;
-  // small-school values round cleanly too.
-  return Math.round(v).toLocaleString();
+  // FTE counts at LEA/SEA scale are 4–5 digits, where a fractional
+  // remainder would just be visual noise. Round those. But at school
+  // scale a counselor can legitimately be 0.5 FTE, and rounding that to 1
+  // makes derived ratios (e.g. student:counselor) look wrong against the
+  // displayed value. Keep a decimal for small values.
+  if (Math.abs(v) >= 100) return Math.round(v).toLocaleString();
+  if (Number.isInteger(v)) return v.toString();
+  return v.toFixed(1);
 }
 
 export function formatRatio(
