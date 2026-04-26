@@ -23,6 +23,7 @@ export type Entity = {
   teachers_fte: number | null;
   staff_total_fte: number | null;
   counselors_fte: number | null;
+  teachers_fte_crdc: number | null;
   teachers_certified_fte: number | null;
   teachers_first_year_fte: number | null;
   teachers_absent_fte: number | null;
@@ -150,6 +151,7 @@ export const STAFF_FIELDS = [
   "teachers_fte",
   "staff_total_fte",
   "counselors_fte",
+  "teachers_fte_crdc",
   "teachers_certified_fte",
   "teachers_first_year_fte",
   "teachers_absent_fte",
@@ -161,6 +163,7 @@ export const STAFF_SOURCE: Record<StaffField, string> = {
   teachers_fte: CCD_YEAR,
   staff_total_fte: CCD_YEAR,
   counselors_fte: CCD_YEAR, // LEAs from CCD; schools roll up from CRDC
+  teachers_fte_crdc: CRDC_YEAR,
   teachers_certified_fte: CRDC_YEAR,
   teachers_first_year_fte: CRDC_YEAR,
   teachers_absent_fte: CRDC_YEAR,

@@ -41,6 +41,11 @@ CREATE TABLE entities (
   teachers_certified_fte  REAL,
   teachers_first_year_fte REAL,
   teachers_absent_fte     REAL,
+  -- CRDC's own teacher-FTE count, kept separate from CCD's teachers_fte
+  -- so cert%/first-year%/absent% percentages have a same-vintage
+  -- denominator (otherwise mixing CRDC numerator with CCD denominator
+  -- can exceed 100%).
+  teachers_fte_crdc       REAL,
 
   -- Community population: residents within the LEA's geographic boundary
   -- (not enrolled students). Sourced from Census SAIPE; LEA-level only,

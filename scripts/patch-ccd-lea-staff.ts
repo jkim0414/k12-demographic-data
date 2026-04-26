@@ -67,7 +67,7 @@ async function main() {
     leaid.push(id);
     teachers.push(toFloat(r.teachers_total_fte));
     staffTotal.push(toFloat(r.staff_total_fte));
-    counselors.push(toFloat(r.school_counselors_fte));
+    counselors.push(toFloat(r.guidance_counselors_total_fte));
   }
   console.log(`Patching ${leaid.length} LEAs…`);
 

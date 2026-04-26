@@ -178,7 +178,7 @@ function HeadlineStrip({ agg }: { agg: Aggregate }) {
       label: "Public-school capture",
       value: `${captureRate.toFixed(1)}%`,
       tooltip:
-        "Enrolled students ÷ school-age residents in district. Below ~95% suggests significant private, charter, homeschool, or cross-district enrollment.",
+        "Enrolled students ÷ school-age residents in district. The national average is ~85%. Below that suggests significant private, charter, homeschool, or cross-district enrollment. Above 100% means the district enrolls students from outside its boundary — common for charter or virtual districts and where the SAIPE-tabulated boundary differs from the actual service area.",
     });
   }
   if (inc.weighted != null) {
@@ -697,7 +697,7 @@ function CommunityTable({ agg }: { agg: Aggregate }) {
       />
       <MetricRow
         label="Public-school capture rate"
-        labelTooltip="Enrolled students ÷ school-age residents in district. Below ~95% suggests significant private, charter, homeschool, or cross-district enrollment. Coverage reflects entities with both an enrollment count and a SAIPE school-age estimate."
+        labelTooltip="Enrolled students ÷ school-age residents in district. National average is ~85%; values below that imply private, charter, homeschool, or cross-district enrollment. Values >100% mean the district enrolls more students than live within its tabulated boundary — common for charter, virtual, or magnet districts and where SAIPE's boundary doesn't match the actual service area."
         value={captureRate != null ? `${captureRate.toFixed(1)}%` : null}
         coverage={c.population_5_17.coverage}
         total={agg.entity_count}
@@ -791,9 +791,11 @@ function TeachersTable({ agg }: { agg: Aggregate }) {
     {
       key: "certified",
       label: "Certified teachers",
-      value: percentOfTeachers(
+      labelTooltip:
+        "Share of CRDC-reported teachers who hold a state teaching certificate. Denominator is CRDC's own teacher count (same vintage), not CCD's, since CRDC sometimes self-reports certified ≥ teachers due to multi-credential counting.",
+      value: percentOfTeachersCrdc(
         s.teachers_certified_fte.total,
-        s.teachers_fte.total
+        s.teachers_fte_crdc.total
       ),
       coverage: s.teachers_certified_fte.coverage,
       total: agg.entity_count,
@@ -804,9 +806,11 @@ function TeachersTable({ agg }: { agg: Aggregate }) {
     {
       key: "first_year",
       label: "First-year teachers",
-      value: percentOfTeachers(
+      labelTooltip:
+        "Share of CRDC-reported teachers in their first year of teaching. Denominator is CRDC's own teacher count.",
+      value: percentOfTeachersCrdc(
         s.teachers_first_year_fte.total,
-        s.teachers_fte.total
+        s.teachers_fte_crdc.total
       ),
       coverage: s.teachers_first_year_fte.coverage,
       total: agg.entity_count,
@@ -817,9 +821,11 @@ function TeachersTable({ agg }: { agg: Aggregate }) {
     {
       key: "absent",
       label: "Teachers absent >10 days",
-      value: percentOfTeachers(
+      labelTooltip:
+        "Share of CRDC-reported teachers absent more than 10 school days during the year. Denominator is CRDC's own teacher count.",
+      value: percentOfTeachersCrdc(
         s.teachers_absent_fte.total,
-        s.teachers_fte.total
+        s.teachers_fte_crdc.total
       ),
       coverage: s.teachers_absent_fte.coverage,
       total: agg.entity_count,
@@ -852,9 +858,17 @@ function TeachersTable({ agg }: { agg: Aggregate }) {
   );
 }
 
-function percentOfTeachers(numerator: number, teachers: number): string | null {
-  if (teachers <= 0 || numerator <= 0) return null;
-  return `${((numerator / teachers) * 100).toFixed(1)}%`;
+function percentOfTeachersCrdc(
+  numerator: number,
+  teachersCrdc: number
+): string | null {
+  if (teachersCrdc <= 0 || numerator <= 0) return null;
+  const pct = (numerator / teachersCrdc) * 100;
+  // CRDC sometimes self-reports certified > teachers (multi-credential
+  // counting). Clamp to 100% with an explicit marker so the value stays
+  // legible without misrepresenting it as a clean percentage.
+  if (pct > 100) return ">100% (CRDC reporting quirk)";
+  return `${pct.toFixed(1)}%`;
 }
 
 // =============================================================================

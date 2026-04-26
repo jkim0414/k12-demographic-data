@@ -135,6 +135,7 @@ async function ingestEL(year: string): Promise<Map<string, number>> {
 }
 
 type SchoolStaff = {
+  teachers_fte_crdc: number | null;
   teachers_certified_fte: number | null;
   teachers_first_year_fte: number | null;
   teachers_absent_fte: number | null;
@@ -157,6 +158,7 @@ async function ingestTeachersStaff(
     const id = pickString(r.ncessch);
     if (!id) continue;
     const next: SchoolStaff = {
+      teachers_fte_crdc: toFloat(r.teachers_fte_crdc),
       teachers_certified_fte: toFloat(r.teachers_certified_fte),
       teachers_first_year_fte: toFloat(r.teachers_first_year_fte),
       teachers_absent_fte: toFloat(r.teachers_absent_fte),
@@ -168,6 +170,10 @@ async function ingestTeachersStaff(
       continue;
     }
     out.set(id, {
+      teachers_fte_crdc: maxOrNull(
+        prev.teachers_fte_crdc,
+        next.teachers_fte_crdc
+      ),
       teachers_certified_fte: maxOrNull(
         prev.teachers_certified_fte,
         next.teachers_certified_fte
@@ -207,6 +213,7 @@ async function applyToSchools(
     UPDATE entities
     SET english_learners = NULL,
         swd = NULL,
+        teachers_fte_crdc = NULL,
         teachers_certified_fte = NULL,
         teachers_first_year_fte = NULL,
         teachers_absent_fte = NULL,
@@ -225,6 +232,7 @@ async function applyToSchools(
   const ncessch: string[] = [];
   const elVals: (number | null)[] = [];
   const swdVals: (number | null)[] = [];
+  const teachersCrdcVals: (number | null)[] = [];
   const certVals: (number | null)[] = [];
   const firstYrVals: (number | null)[] = [];
   const absentVals: (number | null)[] = [];
@@ -234,6 +242,7 @@ async function applyToSchools(
     elVals.push(el.get(id) ?? null);
     swdVals.push(swd.get(id) ?? null);
     const s = staff.get(id);
+    teachersCrdcVals.push(s?.teachers_fte_crdc ?? null);
     certVals.push(s?.teachers_certified_fte ?? null);
     firstYrVals.push(s?.teachers_first_year_fte ?? null);
     absentVals.push(s?.teachers_absent_fte ?? null);
@@ -244,6 +253,7 @@ async function applyToSchools(
     UPDATE entities AS s
     SET english_learners        = u.el,
         swd                     = u.swd,
+        teachers_fte_crdc       = u.teachers_crdc,
         teachers_certified_fte  = u.cert,
         teachers_first_year_fte = u.first_yr,
         teachers_absent_fte     = u.absent,
@@ -251,13 +261,14 @@ async function applyToSchools(
         updated_at              = now()
     FROM (
       SELECT
-        unnest(${ncessch}::text[])     AS ncessch,
-        unnest(${elVals}::int[])        AS el,
-        unnest(${swdVals}::int[])       AS swd,
-        unnest(${certVals}::real[])     AS cert,
-        unnest(${firstYrVals}::real[])  AS first_yr,
-        unnest(${absentVals}::real[])   AS absent,
-        unnest(${counselorVals}::real[]) AS counselors
+        unnest(${ncessch}::text[])         AS ncessch,
+        unnest(${elVals}::int[])            AS el,
+        unnest(${swdVals}::int[])           AS swd,
+        unnest(${teachersCrdcVals}::real[]) AS teachers_crdc,
+        unnest(${certVals}::real[])         AS cert,
+        unnest(${firstYrVals}::real[])      AS first_yr,
+        unnest(${absentVals}::real[])       AS absent,
+        unnest(${counselorVals}::real[])    AS counselors
     ) u
     WHERE s.entity_type = 'school' AND s.nces_id = u.ncessch
   `;
@@ -274,6 +285,7 @@ async function rollupToLeasAndSeas() {
     UPDATE entities AS lea
     SET english_learners        = sub.el_sum,
         swd                     = sub.swd_sum,
+        teachers_fte_crdc       = sub.teachers_crdc_sum,
         teachers_certified_fte  = sub.cert_sum,
         teachers_first_year_fte = sub.first_yr_sum,
         teachers_absent_fte     = sub.absent_sum,
@@ -283,6 +295,7 @@ async function rollupToLeasAndSeas() {
         lea_id,
         SUM(english_learners)::int         AS el_sum,
         SUM(swd)::int                      AS swd_sum,
+        SUM(teachers_fte_crdc)::real       AS teachers_crdc_sum,
         SUM(teachers_certified_fte)::real  AS cert_sum,
         SUM(teachers_first_year_fte)::real AS first_yr_sum,
         SUM(teachers_absent_fte)::real     AS absent_sum
@@ -298,6 +311,7 @@ async function rollupToLeasAndSeas() {
     UPDATE entities AS sea
     SET english_learners        = sub.el_sum,
         swd                     = sub.swd_sum,
+        teachers_fte_crdc       = sub.teachers_crdc_sum,
         teachers_certified_fte  = sub.cert_sum,
         teachers_first_year_fte = sub.first_yr_sum,
         teachers_absent_fte     = sub.absent_sum,
@@ -307,6 +321,7 @@ async function rollupToLeasAndSeas() {
         sea_id,
         SUM(english_learners)::int         AS el_sum,
         SUM(swd)::int                      AS swd_sum,
+        SUM(teachers_fte_crdc)::real       AS teachers_crdc_sum,
         SUM(teachers_certified_fte)::real  AS cert_sum,
         SUM(teachers_first_year_fte)::real AS first_yr_sum,
         SUM(teachers_absent_fte)::real     AS absent_sum

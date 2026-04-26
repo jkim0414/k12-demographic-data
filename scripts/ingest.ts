@@ -173,13 +173,17 @@ async function ingestDistricts(year: string) {
       frl_eligible: null,
       english_learners: toInt(r.english_language_learners),
       swd: toInt(r.spec_ed_students),
-      // LEA-level staff counts from CCD directory. `teachers_total_fte` is
-      // the sum of teachers across grade levels; `school_counselors_fte` is
-      // the modern counselor metric (guidance_counselors_total_fte is a
-      // superset including non-school counselors).
+      // LEA-level staff counts from CCD directory. teachers_total_fte is
+      // the sum of teachers across grade levels.
+      // For counselors we use guidance_counselors_total_fte: it's the
+      // broadest counselor count CCD publishes and is reliably populated
+      // (Gwinnett and Denver report 0 / 30 for school_counselors_fte but
+      // 487 / 200 for guidance_counselors_total_fte). The latter includes
+      // non-school counselors but in practice the gap is small relative
+      // to the inconsistent reporting on school_counselors_fte.
       teachers_fte: toFloat(r.teachers_total_fte),
       staff_total_fte: toFloat(r.staff_total_fte),
-      counselors_fte: toFloat(r.school_counselors_fte),
+      counselors_fte: toFloat(r.guidance_counselors_total_fte),
       teachers_certified_fte: null,
       teachers_first_year_fte: null,
       teachers_absent_fte: null,
