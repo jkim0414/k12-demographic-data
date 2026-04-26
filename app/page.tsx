@@ -1,12 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EntityAutocomplete } from "./components/EntityAutocomplete";
 import { FileUpload } from "./components/FileUpload";
 import { MatchReview } from "./components/MatchReview";
 import { ResultsPanel } from "./components/ResultsPanel";
 import { SelectedEntities } from "./components/SelectedEntities";
 import { Aggregate, Entity, MatchResult, SearchHit } from "@/lib/types";
+
+// Find selected entities that are nested inside another selected entity —
+// e.g. a school whose LEA is also selected, or an LEA whose SEA is also
+// selected. Aggregating both would double-count, so the UI surfaces this
+// and offers to drop the descendants.
+function findOverlaps(selected: SearchHit[]): {
+  overlappingIds: Set<number>;
+  parentNames: Map<number, string>;
+} {
+  const byNcesId = new Map<string, SearchHit>();
+  for (const e of selected) byNcesId.set(e.nces_id, e);
+
+  const overlappingIds = new Set<number>();
+  const parentNames = new Map<number, string>();
+  for (const e of selected) {
+    let parent: SearchHit | undefined;
+    if (e.lea_id && byNcesId.has(e.lea_id)) parent = byNcesId.get(e.lea_id);
+    else if (e.sea_id && byNcesId.has(e.sea_id)) parent = byNcesId.get(e.sea_id);
+    if (parent) {
+      overlappingIds.add(e.id);
+      parentNames.set(e.id, parent.name);
+    }
+  }
+  return { overlappingIds, parentNames };
+}
 
 export default function Page() {
   const [selected, setSelected] = useState<SearchHit[]>([]);
@@ -15,6 +40,15 @@ export default function Page() {
   );
   const [agg, setAgg] = useState<{ entities: Entity[]; aggregate: Aggregate } | null>(null);
   const [aggLoading, setAggLoading] = useState(false);
+
+  const { overlappingIds, parentNames } = useMemo(
+    () => findOverlaps(selected),
+    [selected]
+  );
+
+  function removeOverlaps() {
+    setSelected((s) => s.filter((e) => !overlappingIds.has(e.id)));
+  }
 
   // Re-aggregate whenever selection changes.
   useEffect(() => {
@@ -105,8 +139,20 @@ export default function Page() {
             </button>
           )}
         </div>
-        <SelectedEntities entities={selected} onRemove={removeId} />
+        <SelectedEntities
+          entities={selected}
+          onRemove={removeId}
+          overlappingIds={overlappingIds}
+          parentNames={parentNames}
+        />
       </section>
+
+      {overlappingIds.size > 0 && (
+        <OverlapBanner
+          count={overlappingIds.size}
+          onRemove={removeOverlaps}
+        />
+      )}
 
       {aggLoading && (
         <p className="text-sm text-gray-500">Aggregating…</p>
@@ -115,5 +161,30 @@ export default function Page() {
         <ResultsPanel agg={agg.aggregate} entities={agg.entities} />
       )}
     </main>
+  );
+}
+
+function OverlapBanner({
+  count,
+  onRemove,
+}: {
+  count: number;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="mb-6 flex flex-col gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+      <p>
+        <span className="font-semibold">Heads up:</span> {count} selected{" "}
+        {count === 1 ? "entity is" : "entities are"} nested inside another
+        selected entity (e.g. a school whose district is also selected).
+        Totals below will double-count{count === 1 ? " it" : " them"}.
+      </p>
+      <button
+        onClick={onRemove}
+        className="shrink-0 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+      >
+        Remove {count === 1 ? "1 overlap" : `${count} overlaps`}
+      </button>
+    </div>
   );
 }
