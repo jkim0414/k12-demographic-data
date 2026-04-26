@@ -448,17 +448,21 @@ function RaceComparisonTable({ agg }: { agg: Aggregate }) {
     communityRaceCoverage > 0 &&
     communityRaceCoverage < agg.entity_count;
 
+  // Column order mirrors the Programs table's pattern (Label · Students ·
+  // Enrolled % · …) so the two race-vs-program tables are visually
+  // parallel: the absolute count comes first, then percentages.
   const columns = hasCommunity
     ? [
         { key: "group", label: "Group" },
+        { key: "students", label: "Students", align: "right" as ColAlign },
         { key: "enrolled", label: "Enrolled %", align: "right" as ColAlign },
         { key: "community", label: "Community %", align: "right" as ColAlign },
         { key: "gap", label: "Gap (pts)", align: "right" as ColAlign },
       ]
     : [
         { key: "group", label: "Group" },
-        { key: "enrolled", label: "Enrolled %", align: "right" as ColAlign },
         { key: "students", label: "Students", align: "right" as ColAlign },
+        { key: "enrolled", label: "Enrolled %", align: "right" as ColAlign },
       ];
 
   return (
@@ -487,9 +491,12 @@ function RaceComparisonTable({ agg }: { agg: Aggregate }) {
             <tr key={f} className="border-t border-gray-100">
               <td className="py-1.5">{DEMOGRAPHIC_LABELS[f]}</td>
               <td className="py-1.5 text-right tabular-nums">
+                {b.coverage > 0 ? formatInt(b.total) : "—"}
+              </td>
+              <td className="py-1.5 text-right tabular-nums">
                 {enrolledPct != null ? `${enrolledPct.toFixed(1)}%` : "—"}
               </td>
-              {hasCommunity ? (
+              {hasCommunity && (
                 <>
                   <td className="py-1.5 text-right tabular-nums">
                     {communityPct != null
@@ -500,10 +507,6 @@ function RaceComparisonTable({ agg }: { agg: Aggregate }) {
                     <GapBadge gap={gap} />
                   </td>
                 </>
-              ) : (
-                <td className="py-1.5 text-right tabular-nums">
-                  {b.coverage > 0 ? formatInt(b.total) : "—"}
-                </td>
               )}
             </tr>
           );
@@ -583,7 +586,7 @@ function ProgramsTable({ agg }: { agg: Aggregate }) {
           <tr className="text-xs uppercase tracking-wide text-gray-500">
             <th className="py-1.5 text-left">Metric</th>
             <th className="py-1.5 text-right">Students</th>
-            <th className="py-1.5 text-right">% of enrolled</th>
+            <th className="py-1.5 text-right">Enrolled %</th>
             <th className="py-1.5 text-right">Coverage</th>
           </tr>
         </thead>
