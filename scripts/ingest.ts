@@ -187,6 +187,8 @@ async function ingestDistricts(year: string) {
       teachers_certified_fte: null,
       teachers_first_year_fte: null,
       teachers_absent_fte: null,
+      // LEAs get rolled up from schools after the school ingest.
+      cep_participating: null,
     });
     done += 1;
     if (done % 500 === 0) console.log(`  upserted ${done}/${dir.length}`);
@@ -255,6 +257,10 @@ async function ingestSchools(year: string) {
       teachers_certified_fte: null,
       teachers_first_year_fte: null,
       teachers_absent_fte: null,
+      // CEP indicator: CCD lunch_program = 2 means "NSLP with Community
+      // Eligibility Option". (The `_cedp` fields are unrelated grade-
+      // band indicators despite the suggestive name.)
+      cep_participating: Number(r.lunch_program) === 2,
     });
     done += 1;
     if (done % 2000 === 0) console.log(`  upserted ${done}/${dir.length}`);
@@ -267,6 +273,20 @@ async function ingestSchools(year: string) {
 // Fill LEA-level FRL by summing over child schools (CCD doesn't publish FRL
 // at the LEA level directly). Also recompute LEA enrollment coverage so the
 // denominator matches.
+async function rollupLeaCep() {
+  console.log(`\n=== Rollups: LEA CEP flag from schools ===`);
+  await sql`
+    UPDATE entities AS lea
+    SET cep_participating = sub.any_cep
+    FROM (
+      SELECT lea_id, BOOL_OR(cep_participating) AS any_cep
+      FROM entities WHERE entity_type = 'school'
+      GROUP BY lea_id
+    ) sub
+    WHERE lea.entity_type = 'lea' AND lea.nces_id = sub.lea_id
+  `;
+}
+
 async function rollupLeaFrl() {
   console.log(`\n=== Rollups: LEA FRL from schools ===`);
   await sql`
@@ -306,6 +326,7 @@ async function ingestSEAs(year: string) {
       teachers_certified_fte: number | null;
       teachers_first_year_fte: number | null;
       teachers_absent_fte: number | null;
+      cep_participating: boolean | null;
     }>
   >`
     SELECT
@@ -327,7 +348,8 @@ async function ingestSEAs(year: string) {
       SUM(counselors_fte)::real         AS counselors_fte,
       SUM(teachers_certified_fte)::real AS teachers_certified_fte,
       SUM(teachers_first_year_fte)::real AS teachers_first_year_fte,
-      SUM(teachers_absent_fte)::real    AS teachers_absent_fte
+      SUM(teachers_absent_fte)::real    AS teachers_absent_fte,
+      BOOL_OR(cep_participating)        AS cep_participating
     FROM entities
     WHERE entity_type = 'lea' AND sea_id IS NOT NULL
     GROUP BY sea_id
@@ -360,6 +382,7 @@ async function ingestSEAs(year: string) {
       teachers_certified_fte: r.teachers_certified_fte,
       teachers_first_year_fte: r.teachers_first_year_fte,
       teachers_absent_fte: r.teachers_absent_fte,
+      cep_participating: r.cep_participating,
     });
   }
   console.log(`Done: ${rows.length} SEAs upserted.`);
@@ -392,6 +415,7 @@ type EntityRecord = {
   teachers_certified_fte: number | null;
   teachers_first_year_fte: number | null;
   teachers_absent_fte: number | null;
+  cep_participating: boolean | null;
 };
 
 async function upsertEntity(e: EntityRecord) {
@@ -421,6 +445,7 @@ async function upsertEntity(e: EntityRecord) {
       teachers_certified_fte  = EXCLUDED.teachers_certified_fte,
       teachers_first_year_fte = EXCLUDED.teachers_first_year_fte,
       teachers_absent_fte     = EXCLUDED.teachers_absent_fte,
+      cep_participating       = EXCLUDED.cep_participating,
       updated_at              = now()
   `;
 }
@@ -432,6 +457,7 @@ async function main() {
   if (LEVEL === "all" || LEVEL === "school") await ingestSchools(YEAR);
   if (LEVEL === "all") {
     await rollupLeaFrl();
+    await rollupLeaCep();
     await ingestSEAs(YEAR);
   }
   const [{ count }] = await sql`SELECT COUNT(*)::int AS count FROM entities`;

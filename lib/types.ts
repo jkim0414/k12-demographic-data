@@ -41,6 +41,7 @@ export type Entity = {
   community_population_acs: number | null;
   median_household_income: number | null;
   acs_year: string | null;
+  cep_participating: boolean | null;
 };
 
 export type SearchHit = Entity & {
@@ -142,6 +143,10 @@ export type Aggregate = {
     weighted: number | null;
     coverage: number;
   };
+  // Count of selected entities that participate in CEP (Community
+  // Eligibility Provision). Surfaced as a flag on the FRL row because
+  // CEP changes how FRL counts are reported.
+  cep_count: number;
 };
 
 // Staff FTE fields. Sourced from CCD directory for teachers/staff/counselors

@@ -584,9 +584,20 @@ function ProgramsTable({ agg }: { agg: Aggregate }) {
             const isMissing = b.coverage === 0;
             const partial =
               b.coverage > 0 && b.coverage < agg.entity_count;
+            const showCepNote = f === "frl_eligible" && agg.cep_count > 0;
             return (
               <tr key={f} className="border-t border-gray-100">
-                <td className="py-1.5">{DEMOGRAPHIC_LABELS[f]}</td>
+                <td className="py-1.5">
+                  {DEMOGRAPHIC_LABELS[f]}
+                  {showCepNote && (
+                    <Tooltip
+                      label={`${agg.cep_count} of ${agg.entity_count} selected ${agg.cep_count === 1 ? "entity participates" : "entities participate"} in the Community Eligibility Provision (CEP). Under CEP, all students get free meals regardless of household income, and reporting methodology for the FRL count varies by district — sometimes universal eligibility (~100%), sometimes identified-students × 1.6, sometimes individual applications. Year-over-year jumps in this number can reflect a methodology change rather than a real demographic shift.`}
+                      className="ml-2 inline-flex cursor-help items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800"
+                    >
+                      CEP
+                    </Tooltip>
+                  )}
+                </td>
                 <td className="py-1.5 text-right tabular-nums">
                   {isMissing ? (
                     <NotReported
@@ -931,6 +942,7 @@ function EntitiesCard({ entities }: { entities: Entity[] }) {
                   enrollment={e.total_enrollment}
                   kind="ccd"
                   source={CCD_YEAR}
+                  cep={e.cep_participating ?? false}
                 />
                 <PctCell
                   value={e.english_learners}
@@ -958,11 +970,13 @@ function PctCell({
   enrollment,
   kind,
   source,
+  cep,
 }: {
   value: number | null;
   enrollment: number | null;
   kind: "ccd" | "crdc";
   source: string;
+  cep?: boolean;
 }) {
   if (value == null) {
     return (
@@ -975,13 +989,26 @@ function PctCell({
     return (
       <td className="py-2 text-right tabular-nums">
         <span className="text-gray-400">{formatInt(value)}</span>
+        {cep && <CepDot />}
       </td>
     );
   }
   return (
     <td className="py-2 text-right tabular-nums">
       {`${((value / enrollment) * 100).toFixed(0)}%`}
+      {cep && <CepDot />}
     </td>
+  );
+}
+
+function CepDot() {
+  return (
+    <Tooltip
+      label="Participates in the Community Eligibility Provision (CEP). Under CEP all students get free meals regardless of household income, and the FRL count's reporting methodology varies by district — sometimes universal eligibility, sometimes identified-students × 1.6, sometimes individual applications. Compare to prior years before drawing conclusions."
+      className="ml-1 inline-block cursor-help align-middle text-[9px] font-semibold uppercase text-amber-700"
+    >
+      CEP
+    </Tooltip>
   );
 }
 
@@ -1072,6 +1099,7 @@ function ExportMenu({ agg, entities }: Props) {
       "community_two_or_more",
       "median_household_income",
       "acs_year",
+      "cep_participating",
     ];
     const esc = (v: unknown) => {
       if (v == null) return "";

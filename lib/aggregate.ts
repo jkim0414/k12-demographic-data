@@ -84,6 +84,9 @@ export function aggregate(entities: Entity[]): Aggregate {
     }
   }
 
+  let cep_count = 0;
+  for (const e of entities) if (e.cep_participating) cep_count += 1;
+
   return {
     entity_count: entities.length,
     total_enrollment,
@@ -94,6 +97,7 @@ export function aggregate(entities: Entity[]): Aggregate {
       weighted: income_denom > 0 ? Math.round(income_numer / income_denom) : null,
       coverage: income_coverage,
     },
+    cep_count,
   };
 }
 

@@ -31,6 +31,12 @@ CREATE TABLE entities (
   english_learners  INTEGER,
   swd               INTEGER,       -- students with disabilities
 
+  -- Community Eligibility Provision flag. School-level: any of the four
+  -- CCD `*_cedp` indicators. LEA/SEA: any descendant participates. Used
+  -- to surface that the FRL field's reporting methodology varies by
+  -- district under CEP.
+  cep_participating BOOLEAN,
+
   -- staff FTE (fractional allowed)
   -- CCD directory: teachers_fte (LEAs + schools), staff_total_fte (LEAs only),
   -- counselors_fte at LEA level. CRDC teachers-staff: certified/first-year/
