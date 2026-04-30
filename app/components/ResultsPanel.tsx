@@ -807,7 +807,7 @@ function DisciplineRatesTable({
                     {formatInt(total)}
                   </td>
                   <td className="py-1.5 text-right tabular-nums">
-                    {r != null ? `${r.toFixed(2)}%` : "—"}
+                    {r != null ? `${r.toFixed(1)}%` : "—"}
                   </td>
                 </tr>
               );
@@ -857,10 +857,10 @@ function DisciplineSwdTable({
                 <tr key={m} className="border-t border-gray-100">
                   <td className="py-1.5">{DISCIPLINE_METRIC_LABELS[m]}</td>
                   <td className="py-1.5 text-right tabular-nums">
-                    {overall != null ? `${overall.toFixed(2)}%` : "—"}
+                    {overall != null ? `${overall.toFixed(1)}%` : "—"}
                   </td>
                   <td className="py-1.5 text-right tabular-nums">
-                    {swd != null ? `${swd.toFixed(2)}%` : "—"}
+                    {swd != null ? `${swd.toFixed(1)}%` : "—"}
                   </td>
                   <td className="py-1.5 text-right tabular-nums">
                     <GapBadge gap={gap} />
@@ -965,7 +965,7 @@ function RatioBadge({ ratio }: { ratio: number | null }) {
       ? "text-amber-700"
       : "text-blue-700";
   return (
-    <span className={`tabular-nums ${color}`}>{ratio.toFixed(2)}×</span>
+    <span className={`tabular-nums ${color}`}>{ratio.toFixed(1)}×</span>
   );
 }
 
