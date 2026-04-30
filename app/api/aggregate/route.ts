@@ -20,8 +20,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   }
 
+  // Order rows to match the input `ids` array. Postgres returns rows
+  // from `id = ANY(…)` in physical-storage (≈ primary-key) order by
+  // default, which would surface in the UI as compare-mode columns
+  // appearing in arbitrary order rather than the order the user added
+  // them. `array_position` gives each row its index in the input
+  // array, and we order by that.
   const rows = await sql<Entity[]>`
-    SELECT * FROM entities WHERE id = ANY(${parsed.data.ids})
+    SELECT * FROM entities
+    WHERE id = ANY(${parsed.data.ids})
+    ORDER BY array_position(${parsed.data.ids}::int[], id)
   `;
 
   return NextResponse.json({

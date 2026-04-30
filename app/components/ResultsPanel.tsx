@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ACS_YEAR,
   Aggregate,
@@ -28,16 +28,29 @@ const PROGRAM_FIELDS: DemographicField[] = [
   "swd",
 ];
 
+export type ViewMode = "aggregate" | "compare";
+
 type Props = {
   agg: Aggregate;
   entities: Entity[];
+  mode: ViewMode;
+  onModeChange: (mode: ViewMode) => void;
+  // Compare-mode only — mirrors the Selected-pills × so users don't
+  // have to scroll back up to drop a column.
+  onRemoveEntity: (id: number) => void;
 };
 
 // =============================================================================
 // Top-level layout
 // =============================================================================
 
-export function ResultsPanel({ agg, entities }: Props) {
+export function ResultsPanel({
+  agg,
+  entities,
+  mode,
+  onModeChange,
+  onRemoveEntity,
+}: Props) {
   const sections = visibleSections(agg);
 
   // Sections start expanded. Users can collapse any. Anchor-nav clicks
@@ -72,101 +85,174 @@ export function ResultsPanel({ agg, entities }: Props) {
     onToggle: () => toggle(id),
   });
 
+  // Mode toggle is only meaningful with 2+ entities. With 1 entity,
+  // "compare" is just the aggregate view in a transposed layout — no
+  // benefit, so suppress the toggle.
+  const showModeToggle = entities.length >= 2;
+  const effectiveMode: ViewMode = showModeToggle ? mode : "aggregate";
+
   return (
     <div className="space-y-6">
       {/* Aggregate card */}
       <div className="rounded-lg border border-gray-300 bg-white">
         <div className="border-b border-gray-200 px-3 pb-4 pt-5 sm:px-5">
           <div className="flex items-baseline justify-between gap-4">
-            <h2 className="text-lg font-semibold">Aggregate</h2>
+            <div className="flex items-baseline gap-3">
+              <h2 className="text-lg font-semibold">
+                {effectiveMode === "compare" ? "Compare" : "Aggregate"}
+              </h2>
+              {showModeToggle && (
+                <ModeToggle mode={effectiveMode} onChange={onModeChange} />
+              )}
+            </div>
             <ExportMenu agg={agg} entities={entities} />
           </div>
-          <HeadlineStrip agg={agg} />
+          {effectiveMode === "aggregate" && <HeadlineStrip agg={agg} />}
         </div>
 
-        <AnchorNav sections={sections} onJump={openAndScroll} />
+        <AnchorNav
+          sections={
+            effectiveMode === "aggregate"
+              ? sections
+              : COMPARE_SECTION_IDS
+          }
+          onJump={(id) => {
+            // Compare doesn't have collapsibility, so jump-to is just scroll.
+            if (effectiveMode === "compare") {
+              document.getElementById(id)?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              });
+            } else {
+              openAndScroll(id);
+            }
+          }}
+        />
 
         <div className="px-3 pb-5 sm:px-5">
-          {sections.includes("race") && (
-            <Section
-              {...sectionProps("race")}
-              title="Race / ethnicity"
-              caption={
-                agg.community.community_population_acs.coverage > 0
-                  ? `CCD ${CCD_YEAR} • ACS ${ACS_YEAR}`
-                  : `CCD ${CCD_YEAR}`
-              }
-            >
-              <RaceComparisonTable agg={agg} />
-            </Section>
-          )}
+          {effectiveMode === "compare" ? (
+            <CompareView
+              entities={entities}
+              onRemoveEntity={onRemoveEntity}
+            />
+          ) : (
+            <>
+              {sections.includes("race") && (
+                <Section
+                  {...sectionProps("race")}
+                  title="Race / ethnicity"
+                  caption={
+                    agg.community.community_population_acs.coverage > 0
+                      ? `CCD ${CCD_YEAR} • ACS ${ACS_YEAR}`
+                      : `CCD ${CCD_YEAR}`
+                  }
+                >
+                  <RaceComparisonTable agg={agg} />
+                </Section>
+              )}
 
-          {sections.includes("programs") && (
-            <Section
-              {...sectionProps("programs")}
-              title="Programs"
-              caption={`CCD ${CCD_YEAR} • CRDC ${CRDC_YEAR}`}
-            >
-              <ProgramsTable agg={agg} />
-            </Section>
-          )}
+              {sections.includes("community") && (
+                <Section
+                  {...sectionProps("community")}
+                  title="Community"
+                  subtitle="Residents in the district boundary, not enrolled students. Available for districts and states only — Census doesn't publish population at the school level."
+                  caption={`SAIPE ${SAIPE_YEAR} • ACS ${ACS_YEAR}`}
+                >
+                  <CommunityTable agg={agg} />
+                </Section>
+              )}
 
-          {sections.includes("discipline") && (
-            <Section
-              {...sectionProps("discipline")}
-              title="Discipline"
-              subtitle="Counts are unique students who experienced each action, not incidents. Rates are % of enrolled students; ratios compare each group's rate to the overall rate (1.0× = no disparity)."
-              caption={`CRDC ${CRDC_YEAR}`}
-            >
-              <DisciplineSection agg={agg} />
-            </Section>
-          )}
+              {sections.includes("programs") && (
+                <Section
+                  {...sectionProps("programs")}
+                  title="Programs"
+                  caption={`CCD ${CCD_YEAR} • CRDC ${CRDC_YEAR}`}
+                >
+                  <ProgramsTable agg={agg} />
+                </Section>
+              )}
 
-          {sections.includes("community") && (
-            <Section
-              {...sectionProps("community")}
-              title="Community"
-              subtitle="Residents in the district boundary, not enrolled students. Available for districts and states only — Census doesn't publish population at the school level."
-              caption={`SAIPE ${SAIPE_YEAR} • ACS ${ACS_YEAR}`}
-            >
-              <CommunityTable agg={agg} />
-            </Section>
-          )}
+              {sections.includes("discipline") && (
+                <Section
+                  {...sectionProps("discipline")}
+                  title="Discipline"
+                  subtitle="Counts are unique students who experienced each action, not incidents. Rates are % of that group's enrolled students. Disproportionality compares each group's rate to white students' rate, with White pinned at 1.0× by definition."
+                  caption={`CRDC ${CRDC_YEAR}`}
+                >
+                  <DisciplineSection agg={agg} />
+                </Section>
+              )}
 
-          {sections.includes("teachers") && (
-            <Section
-              {...sectionProps("teachers")}
-              title="Teachers & staff"
-              caption={`CCD ${CCD_YEAR} • CRDC ${CRDC_YEAR}`}
-            >
-              <TeachersTable agg={agg} />
-            </Section>
+              {sections.includes("teachers") && (
+                <Section
+                  {...sectionProps("teachers")}
+                  title="Teachers & staff"
+                  caption={`CCD ${CCD_YEAR} • CRDC ${CRDC_YEAR}`}
+                >
+                  <TeachersTable agg={agg} />
+                </Section>
+              )}
+            </>
           )}
         </div>
       </div>
 
-      {/* Entities card */}
-      <EntitiesCard entities={entities} />
+      {/* Entities card — only in aggregate mode; in compare mode the
+          entity list IS the column headers, so the separate card is
+          redundant. */}
+      {effectiveMode === "aggregate" && <EntitiesCard entities={entities} />}
+    </div>
+  );
+}
+
+function ModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: ViewMode;
+  onChange: (mode: ViewMode) => void;
+}) {
+  return (
+    <div className="inline-flex overflow-hidden rounded-md border border-gray-300 text-xs">
+      {(["aggregate", "compare"] as ViewMode[]).map((m) => {
+        const active = mode === m;
+        return (
+          <button
+            key={m}
+            type="button"
+            onClick={() => onChange(m)}
+            className={`px-2.5 py-1 font-medium ${
+              active
+                ? "bg-indigo-600 text-white"
+                : "bg-white text-gray-700 hover:bg-gray-50"
+            }`}
+            aria-pressed={active}
+          >
+            {m === "aggregate" ? "Aggregate" : "Compare"}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 // Decide which sections render. Hides ones with no data so the anchor nav
-// stays accurate.
+// stays accurate. Order matches the rendered order: Race → Community →
+// Programs → Discipline → Teachers (demographic context first, then
+// student-experience cluster, then workforce).
 function visibleSections(agg: Aggregate): string[] {
   const out: string[] = ["race"];
-  // programs: show if any program field has any coverage
-  if (PROGRAM_FIELDS.some((f) => agg.breakdown[f].coverage > 0)) {
-    out.push("programs");
-  }
-  if (agg.discipline.coverage > 0) {
-    out.push("discipline");
-  }
   if (
     agg.community.population_total.coverage > 0 ||
     agg.community.community_population_acs.coverage > 0
   ) {
     out.push("community");
+  }
+  if (PROGRAM_FIELDS.some((f) => agg.breakdown[f].coverage > 0)) {
+    out.push("programs");
+  }
+  if (agg.discipline.coverage > 0) {
+    out.push("discipline");
   }
   // teachers: show if at least one staff field has coverage
   const staff = agg.staff;
@@ -229,7 +315,7 @@ function HeadlineStrip({ agg }: { agg: Aggregate }) {
       label: "Public-school capture",
       value: `${captureRate.toFixed(1)}%`,
       tooltip:
-        "Enrolled students ÷ school-age residents in district. The national average is ~85%. Below that suggests significant private, charter, homeschool, or cross-district enrollment. Above 100% means the district enrolls students from outside its boundary — common for charter or virtual districts and where the SAIPE-tabulated boundary differs from the actual service area.",
+        "Enrolled students ÷ school-age residents in district. The national average is ~85%. Values below 100% reflect students in the boundary attending private, charter, homeschool, or cross-district public schools. Values above 100% mean the district enrolls students from outside its tabulated boundary — common for charter or virtual districts and where the SAIPE-tabulated boundary differs from the actual service area.",
     });
   }
   if (inc.weighted != null) {
@@ -278,6 +364,17 @@ const SECTION_LABELS: Record<string, string> = {
   community: "Community",
   teachers: "Teachers & staff",
 };
+
+// Compare mode always shows all five sections (no per-section coverage
+// suppression — every section has the same shape regardless of which
+// entities are selected).
+const COMPARE_SECTION_IDS: string[] = [
+  "race",
+  "community",
+  "programs",
+  "discipline",
+  "teachers",
+];
 
 function AnchorNav({
   sections,
@@ -385,6 +482,19 @@ function Chevron({ open }: { open: boolean }) {
 
 type ColAlign = "left" | "right";
 
+// Pin the first ("label") column of every metric table to a consistent
+// minimum width. This is what gives the page its visual rhythm — the
+// left edge of every metric table starts in the same place, regardless
+// of section.
+//
+// `min-w` (not `w`) so a label longer than 14rem grows the column
+// instead of wrapping it ("Free / reduced-price lunch eligible" plus
+// the CEP badge needs ~17rem). On mobile the cell can wrap, since
+// horizontal scrolling for label content is a worse experience than a
+// two-line label; `sm:whitespace-nowrap` flips it to single-line on
+// desktop where there's room.
+const LABEL_COL_WIDTH = "min-w-[14rem] whitespace-normal sm:whitespace-nowrap";
+
 function MetricTable({
   columns,
   children,
@@ -393,13 +503,13 @@ function MetricTable({
   children: React.ReactNode;
 }) {
   return (
-    <table className="w-full text-sm">
+    <table className="text-sm">
       <thead>
         <tr className="text-xs uppercase tracking-wide text-gray-500">
-          {columns.map((c) => (
+          {columns.map((c, i) => (
             <th
               key={c.key}
-              className={`py-1.5 ${
+              className={`px-3 py-1.5 ${i === 0 ? LABEL_COL_WIDTH : ""} ${
                 c.align === "right" ? "text-right" : "text-left"
               }`}
             >
@@ -447,7 +557,7 @@ function MetricRow({
 
   return (
     <tr className="border-t border-gray-100">
-      <td className="py-1.5">
+      <td className={`px-3 py-1.5 ${LABEL_COL_WIDTH}`}>
         {labelTooltip ? (
           <Tooltip
             label={labelTooltip}
@@ -459,7 +569,7 @@ function MetricRow({
           label
         )}
       </td>
-      <td className="py-1.5 text-right tabular-nums">
+      <td className="px-3 py-1.5 text-right tabular-nums">
         {isMissing ? (
           <NotReported
             kind={missingKind ?? "ccd"}
@@ -474,7 +584,7 @@ function MetricRow({
           </>
         )}
       </td>
-      <td className="py-1.5 text-right text-xs text-gray-500 tabular-nums">
+      <td className="px-3 py-1.5 text-right text-xs text-gray-500 tabular-nums">
         {coverage != null && total != null ? (
           partial ? (
             <Tooltip
@@ -589,21 +699,23 @@ function RaceComparisonTable({ agg }: { agg: Aggregate }) {
 
           return (
             <tr key={f} className="border-t border-gray-100">
-              <td className="py-1.5">{DEMOGRAPHIC_LABELS[f]}</td>
-              <td className="py-1.5 text-right tabular-nums">
+              <td className={`px-3 py-1.5 ${LABEL_COL_WIDTH}`}>
+                {DEMOGRAPHIC_LABELS[f]}
+              </td>
+              <td className="px-3 py-1.5 text-right tabular-nums">
                 {b.coverage > 0 ? formatInt(b.total) : "—"}
               </td>
-              <td className="py-1.5 text-right tabular-nums">
+              <td className="px-3 py-1.5 text-right tabular-nums">
                 {enrolledPct != null ? `${enrolledPct.toFixed(1)}%` : "—"}
               </td>
               {hasCommunity && (
                 <>
-                  <td className="py-1.5 text-right tabular-nums">
+                  <td className="px-3 py-1.5 text-right tabular-nums">
                     {communityPct != null
                       ? `${communityPct.toFixed(1)}%`
                       : "—"}
                   </td>
-                  <td className="py-1.5 text-right tabular-nums">
+                  <td className="px-3 py-1.5 text-right tabular-nums">
                     <GapBadge gap={gap} />
                   </td>
                 </>
@@ -616,8 +728,8 @@ function RaceComparisonTable({ agg }: { agg: Aggregate }) {
       <div className="mt-2 space-y-1">
         {hasCommunity && (
           <p className="text-[11px] text-gray-400">
-            Gap = enrolled% − community%. Blue: over-represented in
-            enrollment. Amber: under-represented.
+            Gap = enrolled% − community%. Blue: enrolled % higher than
+            community %. Amber: enrolled % lower.
           </p>
         )}
         {(enrolledPartial || communityPartial) && (
@@ -668,14 +780,14 @@ function ProgramsTable({ agg }: { agg: Aggregate }) {
   // squashing it into the value cell as a parenthetical. Coverage stays
   // in the rightmost column.
   return (
-    <div className="overflow-x-auto md:max-w-xl">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto">
+      <table className="text-sm">
         <thead>
           <tr className="text-xs uppercase tracking-wide text-gray-500">
-            <th className="py-1.5 text-left">Metric</th>
-            <th className="py-1.5 text-right">Students</th>
-            <th className="py-1.5 text-right">Enrolled %</th>
-            <th className="py-1.5 text-right">Coverage</th>
+            <th className={`px-3 py-1.5 text-left ${LABEL_COL_WIDTH}`}>Metric</th>
+            <th className="px-3 py-1.5 text-right">Students</th>
+            <th className="px-3 py-1.5 text-right">Enrolled %</th>
+            <th className="px-3 py-1.5 text-right">Coverage</th>
           </tr>
         </thead>
         <tbody>
@@ -688,7 +800,7 @@ function ProgramsTable({ agg }: { agg: Aggregate }) {
             const showCepNote = f === "frl_eligible" && agg.cep_count > 0;
             return (
               <tr key={f} className="border-t border-gray-100">
-                <td className="py-1.5">
+                <td className={`px-3 py-1.5 ${LABEL_COL_WIDTH}`}>
                   {DEMOGRAPHIC_LABELS[f]}
                   {showCepNote && (
                     <Tooltip
@@ -699,7 +811,7 @@ function ProgramsTable({ agg }: { agg: Aggregate }) {
                     </Tooltip>
                   )}
                 </td>
-                <td className="py-1.5 text-right tabular-nums">
+                <td className="px-3 py-1.5 text-right tabular-nums">
                   {isMissing ? (
                     <NotReported
                       kind={isCrdc ? "crdc" : "ccd"}
@@ -709,10 +821,10 @@ function ProgramsTable({ agg }: { agg: Aggregate }) {
                     formatInt(b.total)
                   )}
                 </td>
-                <td className="py-1.5 text-right tabular-nums">
+                <td className="px-3 py-1.5 text-right tabular-nums">
                   {isMissing ? "—" : formatPct(b.percent)}
                 </td>
-                <td className="py-1.5 text-right text-xs text-gray-500 tabular-nums">
+                <td className="px-3 py-1.5 text-right text-xs text-gray-500 tabular-nums">
                   {partial ? (
                     <Tooltip
                       label={`${b.coverage} of ${agg.entity_count} entities reported this field; the value reflects only the reporting subset.`}
@@ -734,36 +846,42 @@ function ProgramsTable({ agg }: { agg: Aggregate }) {
 }
 
 // =============================================================================
-// Discipline section — three sub-tables: headline rates, disability gap,
-// race-ratio matrix
+// Discipline section — three sub-tables:
+//   1. Counts and rates by race (incl. an "All students" row at the top —
+//      replaces the old standalone Rates table since its info is now this
+//      table's first row)
+//   2. Counts and rates by disability (All vs. SWD)
+//   3. Disproportionality vs. White (race rows pinned at White=1.0×) plus
+//      an SWD-vs-non-SWD row, the standard civil-rights framing
 // =============================================================================
 
+// Minimum group-enrollment threshold for computing a meaningful rate or
+// ratio. Below this, small-N noise dominates (e.g. one student of a group
+// flipping a 0% rate into a 20% rate). Show "—" with a tooltip rather
+// than risk a misleading number.
+const SMALL_N_THRESHOLD = 10;
+
 function DisciplineSection({ agg }: { agg: Aggregate }) {
-  const enrolled = agg.total_enrollment;
   const counts = agg.discipline.counts;
   const partial =
     agg.discipline.coverage > 0 &&
     agg.discipline.coverage < agg.entity_count;
 
-  // Per-metric overall rate (= total disciplined / total enrolled).
-  function rate(m: DisciplineMetric): number | null {
-    if (!enrolled) return null;
-    return (counts[m].total / enrolled) * 100;
-  }
-
-  // Suppress a metric row if every entity reported zero — that's
-  // typically an artifact of CRDC for that metric (e.g., expulsion is
-  // 0 at almost every school in the country, so total = 0 nationally
-  // is plausible but not informative). Show non-zero rows only.
+  // Suppress a metric column if every entity reported zero — typically
+  // an artifact of CRDC for that metric (e.g. expulsion is 0 at almost
+  // every school in the country).
   const visibleMetrics = DISCIPLINE_METRICS.filter(
     (m) => counts[m].total > 0
   );
 
   return (
     <div className="space-y-6">
-      <DisciplineRatesTable agg={agg} metrics={visibleMetrics} rate={rate} />
-      <DisciplineSwdTable agg={agg} metrics={visibleMetrics} rate={rate} />
-      <DisciplineRaceMatrix agg={agg} metrics={visibleMetrics} rate={rate} />
+      <DisciplineByRaceTable agg={agg} metrics={visibleMetrics} />
+      <DisciplineByDisabilityTable agg={agg} metrics={visibleMetrics} />
+      <DisciplineDisproportionalityTable
+        agg={agg}
+        metrics={visibleMetrics}
+      />
       {partial && (
         <p className="text-[11px] text-amber-700">
           Coverage: {agg.discipline.coverage}/{agg.entity_count} entities
@@ -771,176 +889,6 @@ function DisciplineSection({ agg }: { agg: Aggregate }) {
           only the reporting subset.
         </p>
       )}
-    </div>
-  );
-}
-
-function DisciplineRatesTable({
-  agg,
-  metrics,
-  rate,
-}: {
-  agg: Aggregate;
-  metrics: DisciplineMetric[];
-  rate: (m: DisciplineMetric) => number | null;
-}) {
-  const counts = agg.discipline.counts;
-  return (
-    <div>
-      <div className="overflow-x-auto md:max-w-xl">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-xs uppercase tracking-wide text-gray-500">
-              <th className="py-1.5 text-left">Metric</th>
-              <th className="py-1.5 text-right">Students</th>
-              <th className="py-1.5 text-right">Enrolled %</th>
-            </tr>
-          </thead>
-          <tbody>
-            {metrics.map((m) => {
-              const total = counts[m].total;
-              const r = rate(m);
-              return (
-                <tr key={m} className="border-t border-gray-100">
-                  <td className="py-1.5">{DISCIPLINE_METRIC_LABELS[m]}</td>
-                  <td className="py-1.5 text-right tabular-nums">
-                    {formatInt(total)}
-                  </td>
-                  <td className="py-1.5 text-right tabular-nums">
-                    {r != null ? `${r.toFixed(1)}%` : "—"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function DisciplineSwdTable({
-  agg,
-  metrics,
-  rate,
-}: {
-  agg: Aggregate;
-  metrics: DisciplineMetric[];
-  rate: (m: DisciplineMetric) => number | null;
-}) {
-  const counts = agg.discipline.counts;
-  const swdEnrolled = agg.breakdown.swd.total;
-  if (swdEnrolled <= 0) return null;
-
-  return (
-    <div>
-      <div className="overflow-x-auto md:max-w-xl">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-xs uppercase tracking-wide text-gray-500">
-              <th className="py-1.5 text-left">Metric</th>
-              <th className="py-1.5 text-right">Overall %</th>
-              <th className="py-1.5 text-right">SWD %</th>
-              <th className="py-1.5 text-right">Gap (pts)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {metrics.map((m) => {
-              const overall = rate(m);
-              const swd =
-                counts[m].swd > 0 && swdEnrolled > 0
-                  ? (counts[m].swd / swdEnrolled) * 100
-                  : null;
-              const gap =
-                overall != null && swd != null ? swd - overall : null;
-              return (
-                <tr key={m} className="border-t border-gray-100">
-                  <td className="py-1.5">{DISCIPLINE_METRIC_LABELS[m]}</td>
-                  <td className="py-1.5 text-right tabular-nums">
-                    {overall != null ? `${overall.toFixed(1)}%` : "—"}
-                  </td>
-                  <td className="py-1.5 text-right tabular-nums">
-                    {swd != null ? `${swd.toFixed(1)}%` : "—"}
-                  </td>
-                  <td className="py-1.5 text-right tabular-nums">
-                    <GapBadge gap={gap} />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function DisciplineRaceMatrix({
-  agg,
-  metrics,
-  rate,
-}: {
-  agg: Aggregate;
-  metrics: DisciplineMetric[];
-  rate: (m: DisciplineMetric) => number | null;
-}) {
-  const counts = agg.discipline.counts;
-  const races = Object.keys(DISCIPLINE_RACE_TO_ENROLLED) as Array<
-    keyof typeof DISCIPLINE_RACE_TO_ENROLLED
-  >;
-
-  return (
-    <div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-xs uppercase tracking-wide text-gray-500">
-              <th className="py-1.5 text-left">Group</th>
-              {metrics.map((m) => (
-                <th key={m} className="py-1.5 text-right">
-                  {SHORT_METRIC[m]}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {races.map((race) => {
-              const enrolledField = DISCIPLINE_RACE_TO_ENROLLED[race];
-              const raceEnrolled = agg.breakdown[enrolledField].total;
-              return (
-                <tr key={race} className="border-t border-gray-100">
-                  <td className="py-1.5">{DEMOGRAPHIC_LABELS[enrolledField]}</td>
-                  {metrics.map((m) => {
-                    const overall = rate(m);
-                    const groupRate =
-                      counts[m][race] > 0 && raceEnrolled > 0
-                        ? (counts[m][race] / raceEnrolled) * 100
-                        : null;
-                    const ratio =
-                      overall != null && overall > 0 && groupRate != null
-                        ? groupRate / overall
-                        : null;
-                    return (
-                      <td
-                        key={m}
-                        className="py-1.5 text-right tabular-nums"
-                      >
-                        <RatioBadge ratio={ratio} />
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="mt-2 text-[11px] text-gray-400">
-        1.0× = group is disciplined at the overall rate. Numbers above 1.0×
-        indicate over-representation among disciplined students relative to
-        that group&apos;s share of enrollment; below 1.0× indicates
-        under-representation.
-      </p>
     </div>
   );
 }
@@ -953,17 +901,347 @@ const SHORT_METRIC: Record<DisciplineMetric, string> = {
   arrest: "Arrest",
 };
 
-function RatioBadge({ ratio }: { ratio: number | null }) {
-  if (ratio == null || !isFinite(ratio))
+// Cell renderer for a count + rate. Rate (% of group's enrollment) is
+// the headline; count appears below in smaller text so the reader can
+// gauge significance (a 50% rate from 2 students is very different from
+// the same rate from 200).
+function CountRateCell({
+  count,
+  enrolled,
+}: {
+  count: number;
+  enrolled: number;
+}) {
+  if (enrolled <= 0) {
     return <span className="text-gray-400">—</span>;
-  // Color the cell by direction and magnitude. A ±10% band reads as
-  // basically equal; larger gaps get colored.
-  const color =
-    Math.abs(ratio - 1) < 0.1
-      ? "text-gray-500"
-      : ratio > 1
-      ? "text-amber-700"
-      : "text-blue-700";
+  }
+  const rate = (count / enrolled) * 100;
+  return (
+    <span className="inline-block leading-tight">
+      <span className="block tabular-nums">{rate.toFixed(1)}%</span>
+      <span className="block text-[10px] text-gray-500 tabular-nums">
+        n={count.toLocaleString()}
+      </span>
+    </span>
+  );
+}
+
+// Shared column-width skeleton so the three discipline tables align
+// vertically regardless of how many rows each has. Without this each
+// table auto-sizes its columns to its own content and they end up
+// misaligned with each other.
+function DisciplineColGroup({ metricCount }: { metricCount: number }) {
+  return (
+    <colgroup>
+      <col className={LABEL_COL_WIDTH} />
+      {Array.from({ length: metricCount }).map((_, i) => (
+        <col key={i} />
+      ))}
+    </colgroup>
+  );
+}
+
+function DisciplineHead({ metrics }: { metrics: DisciplineMetric[] }) {
+  return (
+    <thead>
+      <tr className="text-xs uppercase tracking-wide text-gray-500">
+        <th className="px-3 py-1.5 text-left">Group</th>
+        {metrics.map((m) => (
+          <th key={m} className="px-3 py-1.5 text-right">
+            {SHORT_METRIC[m]}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+}
+
+function DisciplineByRaceTable({
+  agg,
+  metrics,
+}: {
+  agg: Aggregate;
+  metrics: DisciplineMetric[];
+}) {
+  const counts = agg.discipline.counts;
+  const races = Object.keys(DISCIPLINE_RACE_TO_ENROLLED) as Array<
+    keyof typeof DISCIPLINE_RACE_TO_ENROLLED
+  >;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="text-sm">
+        <DisciplineColGroup metricCount={metrics.length} />
+        <DisciplineHead metrics={metrics} />
+        <tbody>
+          <tr className="border-t border-gray-100 font-medium">
+            <td className="px-3 py-1.5 whitespace-normal sm:whitespace-nowrap">All students</td>
+            {metrics.map((m) => (
+              <td key={m} className="px-3 py-1.5 text-right">
+                <CountRateCell
+                  count={counts[m].total}
+                  enrolled={agg.total_enrollment}
+                />
+              </td>
+            ))}
+          </tr>
+          {races.map((race) => {
+            const enrolledField = DISCIPLINE_RACE_TO_ENROLLED[race];
+            const raceEnrolled = agg.breakdown[enrolledField].total;
+            return (
+              <tr key={race} className="border-t border-gray-100">
+                <td className="px-3 py-1.5 whitespace-normal sm:whitespace-nowrap">
+                  {DEMOGRAPHIC_LABELS[enrolledField]}
+                </td>
+                {metrics.map((m) => (
+                  <td key={m} className="px-3 py-1.5 text-right">
+                    <CountRateCell
+                      count={counts[m][race]}
+                      enrolled={raceEnrolled}
+                    />
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DisciplineByDisabilityTable({
+  agg,
+  metrics,
+}: {
+  agg: Aggregate;
+  metrics: DisciplineMetric[];
+}) {
+  const counts = agg.discipline.counts;
+  const swdEnrolled = agg.breakdown.swd.total;
+  if (swdEnrolled <= 0) return null;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="text-sm">
+        <DisciplineColGroup metricCount={metrics.length} />
+        <DisciplineHead metrics={metrics} />
+        <tbody>
+          <tr className="border-t border-gray-100 font-medium">
+            <td className="px-3 py-1.5 whitespace-normal sm:whitespace-nowrap">All students</td>
+            {metrics.map((m) => (
+              <td key={m} className="px-3 py-1.5 text-right">
+                <CountRateCell
+                  count={counts[m].total}
+                  enrolled={agg.total_enrollment}
+                />
+              </td>
+            ))}
+          </tr>
+          <tr className="border-t border-gray-100">
+            <td className="px-3 py-1.5 whitespace-normal sm:whitespace-nowrap">Students with disabilities</td>
+            {metrics.map((m) => (
+              <td key={m} className="px-3 py-1.5 text-right">
+                <CountRateCell
+                  count={counts[m].swd}
+                  enrolled={swdEnrolled}
+                />
+              </td>
+            ))}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DisciplineDisproportionalityTable({
+  agg,
+  metrics,
+}: {
+  agg: Aggregate;
+  metrics: DisciplineMetric[];
+}) {
+  const counts = agg.discipline.counts;
+  const races = Object.keys(DISCIPLINE_RACE_TO_ENROLLED) as Array<
+    keyof typeof DISCIPLINE_RACE_TO_ENROLLED
+  >;
+  const whiteEnrolled = agg.breakdown.white.total;
+  const swdEnrolled = agg.breakdown.swd.total;
+
+  // For race rows: ratio = group rate / white rate. White is by
+  // definition 1.0×. Suppress when the white denominator is too small
+  // for white-rate to be meaningful (small-N at small schools turns
+  // ratios into noise).
+  function raceRatio(
+    m: DisciplineMetric,
+    race: keyof typeof DISCIPLINE_RACE_TO_ENROLLED
+  ): { value: number | null; reason?: string } {
+    if (race === "white") return { value: 1 };
+    if (whiteEnrolled < SMALL_N_THRESHOLD) {
+      return {
+        value: null,
+        reason: `White enrollment (${whiteEnrolled}) is below the ${SMALL_N_THRESHOLD}-student threshold for a stable reference rate.`,
+      };
+    }
+    const whiteCount = counts[m].white;
+    if (whiteCount === 0) {
+      return {
+        value: null,
+        reason:
+          "Zero white students experienced this action; ratio is undefined.",
+      };
+    }
+    const enrolledField = DISCIPLINE_RACE_TO_ENROLLED[race];
+    const groupEnrolled = agg.breakdown[enrolledField].total;
+    if (groupEnrolled <= 0) return { value: null };
+    const whiteRate = whiteCount / whiteEnrolled;
+    const groupRate = counts[m][race] / groupEnrolled;
+    return { value: groupRate / whiteRate };
+  }
+
+  // For the SWD row: ratio = SWD rate / non-SWD rate.
+  function swdRatio(
+    m: DisciplineMetric
+  ): { value: number | null; reason?: string } {
+    const nonSwdEnrolled = agg.total_enrollment - swdEnrolled;
+    if (nonSwdEnrolled < SMALL_N_THRESHOLD) return { value: null };
+    const nonSwdCount = counts[m].total - counts[m].swd;
+    if (nonSwdCount === 0) {
+      return {
+        value: null,
+        reason:
+          "Zero non-SWD students experienced this action; ratio is undefined.",
+      };
+    }
+    if (swdEnrolled <= 0) return { value: null };
+    const swdRate = counts[m].swd / swdEnrolled;
+    const nonSwdRate = nonSwdCount / nonSwdEnrolled;
+    return { value: swdRate / nonSwdRate };
+  }
+
+  const metricCount = metrics.length;
+  return (
+    <div>
+      <div className="overflow-x-auto">
+        <table className="text-sm">
+          <DisciplineColGroup metricCount={metricCount} />
+          <DisciplineHead metrics={metrics} />
+          {/* Race rows — reference is White */}
+          <tbody>
+            <tr>
+              <td
+                colSpan={metricCount + 1}
+                className="border-t border-gray-200 bg-gray-50 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-500"
+              >
+                By race · vs. White students
+              </td>
+            </tr>
+            {races.map((race) => {
+              const enrolledField = DISCIPLINE_RACE_TO_ENROLLED[race];
+              const isReference = race === "white";
+              return (
+                <tr
+                  key={race}
+                  className={`border-t border-gray-100 ${
+                    isReference ? "bg-gray-50/50" : ""
+                  }`}
+                >
+                  <td className="px-3 py-1.5 whitespace-normal sm:whitespace-nowrap">
+                    {DEMOGRAPHIC_LABELS[enrolledField]}
+                  </td>
+                  {metrics.map((m) => {
+                    const r = raceRatio(m, race);
+                    return (
+                      <td
+                        key={m}
+                        className="px-3 py-1.5 text-right tabular-nums"
+                      >
+                        <RatioBadge
+                          ratio={r.value}
+                          reference={isReference}
+                          reason={r.reason}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+          {/* Disability row — reference is non-SWD */}
+          {swdEnrolled > 0 && (
+            <tbody>
+              <tr>
+                <td
+                  colSpan={metricCount + 1}
+                  className="border-t border-gray-200 bg-gray-50 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-500"
+                >
+                  By disability · vs. non-SWD students
+                </td>
+              </tr>
+              <tr className="border-t border-gray-100">
+                <td className="px-3 py-1.5 whitespace-normal sm:whitespace-nowrap">Students with disabilities</td>
+                {metrics.map((m) => {
+                  const r = swdRatio(m);
+                  return (
+                    <td
+                      key={m}
+                      className="px-3 py-1.5 text-right tabular-nums"
+                    >
+                      <RatioBadge ratio={r.value} reason={r.reason} />
+                    </td>
+                  );
+                })}
+              </tr>
+            </tbody>
+          )}
+        </table>
+      </div>
+      <p className="mt-2 text-[11px] text-gray-400">
+        Higher than 1.0× means the group is disciplined at a higher rate
+        than the reference; lower than 1.0× means a lower rate. Cells
+        show &quot;—&quot; when the reference group has fewer than{" "}
+        {SMALL_N_THRESHOLD} enrolled students or zero disciplined
+        students (denominator too small or zero).
+      </p>
+    </div>
+  );
+}
+
+function RatioBadge({
+  ratio,
+  reference,
+  reason,
+}: {
+  ratio: number | null;
+  reference?: boolean;
+  reason?: string;
+}) {
+  if (ratio == null || !isFinite(ratio)) {
+    if (reason) {
+      return (
+        <Tooltip
+          label={reason}
+          className="cursor-help text-gray-400 underline decoration-dotted decoration-gray-300"
+        >
+          —
+        </Tooltip>
+      );
+    }
+    return <span className="text-gray-400">—</span>;
+  }
+  // White-as-reference: 1.0× is by construction. Other groups colored
+  // by direction and magnitude. The ±10% band reads as essentially
+  // equal; larger gaps get colored. Higher (above-reference) is amber
+  // — the standard civil-rights "concerning" direction.
+  const color = reference
+    ? "text-gray-500"
+    : Math.abs(ratio - 1) < 0.1
+    ? "text-gray-500"
+    : ratio > 1
+    ? "text-amber-700"
+    : "text-blue-700";
   return (
     <span className={`tabular-nums ${color}`}>{ratio.toFixed(1)}×</span>
   );
@@ -1056,7 +1334,7 @@ function CommunityTable({ agg }: { agg: Aggregate }) {
       />
       <MetricRow
         label="Public-school capture rate"
-        labelTooltip="Enrolled students ÷ school-age residents in district. National average is ~85%; values below that imply private, charter, homeschool, or cross-district enrollment. Values >100% mean the district enrolls more students than live within its tabulated boundary — common for charter, virtual, or magnet districts and where SAIPE's boundary doesn't match the actual service area."
+        labelTooltip="Enrolled students ÷ school-age residents in district. National average is ~85%. Values below 100% reflect students in the boundary attending private, charter, homeschool, or cross-district public schools. Values >100% mean the district enrolls more students than live within its tabulated boundary — common for charter, virtual, or magnet districts and where SAIPE's boundary doesn't match the actual service area."
         value={captureRate != null ? `${captureRate.toFixed(1)}%` : null}
         coverage={c.population_5_17.coverage}
         total={agg.entity_count}
@@ -1345,7 +1623,7 @@ function PctCell({
 function CepDot() {
   return (
     <Tooltip
-      label="Participates in the Community Eligibility Provision (CEP). Under CEP all students get free meals regardless of household income, and the FRL count's reporting methodology varies by district — sometimes universal eligibility, sometimes identified-students × 1.6, sometimes individual applications. Compare to prior years before drawing conclusions."
+      label="Participates in the Community Eligibility Provision (CEP). Under CEP all students get free meals regardless of household income, and the FRL count's reporting methodology varies by district — sometimes universal eligibility, sometimes identified-students × 1.6, sometimes individual applications."
       className="ml-1 inline-block cursor-help align-middle text-[9px] font-semibold uppercase text-amber-700"
     >
       CEP
@@ -1354,10 +1632,361 @@ function CepDot() {
 }
 
 // =============================================================================
+// Compare view — metrics as rows, entities as columns (transposed from
+// aggregate's metrics-as-cells layout). Race comparison's
+// enrolled-vs-community columns and Discipline's race/disability
+// disparity matrices don't transpose to N entities meaningfully, so
+// those views are aggregate-only; compare shows the headline rate per
+// metric per entity.
+// =============================================================================
+
+// Each row defines how to extract a numeric value from an entity and
+// how to format it for display. Keeping value() separate from format()
+// makes downstream uses (CSV export, future small-multiples charts)
+// cleaner — they get the raw number without re-parsing formatted text.
+type CompareRow = {
+  key: string;
+  label: string;
+  value: (e: Entity) => number | null;
+  format: (v: number | null) => React.ReactNode;
+};
+
+const RACE_ROWS: CompareRow[] = RACE_FIELDS.map((f) => ({
+  key: f,
+  label: DEMOGRAPHIC_LABELS[f],
+  value: (e) =>
+    e[f] != null && e.total_enrollment
+      ? ((e[f] as number) / e.total_enrollment) * 100
+      : null,
+  format: pctFormat,
+}));
+
+const PROGRAM_ROWS: CompareRow[] = PROGRAM_FIELDS.map((f) => ({
+  key: f,
+  label: DEMOGRAPHIC_LABELS[f],
+  value: (e) =>
+    e[f] != null && e.total_enrollment
+      ? ((e[f] as number) / e.total_enrollment) * 100
+      : null,
+  format: pctFormat,
+}));
+
+const COMMUNITY_ROWS: CompareRow[] = [
+  {
+    key: "pop_total",
+    label: "Total population",
+    value: (e) => e.population_total ?? null,
+    format: intFormat,
+  },
+  {
+    key: "pop_5_17",
+    label: "School-age (5–17)",
+    value: (e) => e.population_5_17 ?? null,
+    format: intFormat,
+  },
+  {
+    key: "child_poverty",
+    label: "Children in poverty (5–17)",
+    value: (e) =>
+      e.population_5_17 && e.population_5_17_poverty != null
+        ? (e.population_5_17_poverty / e.population_5_17) * 100
+        : null,
+    format: pctFormat,
+  },
+  {
+    key: "income",
+    label: "Median household income",
+    value: (e) => e.median_household_income ?? null,
+    format: (v) =>
+      v == null ? nullDash() : `$${Math.round(v).toLocaleString()}`,
+  },
+  {
+    key: "capture",
+    label: "Public-school capture rate",
+    value: (e) =>
+      e.population_5_17 && e.total_enrollment
+        ? (e.total_enrollment / e.population_5_17) * 100
+        : null,
+    format: pctFormat,
+  },
+];
+
+const DISCIPLINE_ROWS: CompareRow[] = DISCIPLINE_METRICS.map((m) => ({
+  key: m,
+  label: DISCIPLINE_METRIC_LABELS[m],
+  value: (e) => {
+    const c = e.discipline?.[m]?.total ?? null;
+    if (c == null || !e.total_enrollment) return null;
+    return (c / e.total_enrollment) * 100;
+  },
+  format: pctFormat,
+}));
+
+const TEACHERS_ROWS: CompareRow[] = [
+  {
+    key: "teachers_fte",
+    label: "Teachers FTE",
+    value: (e) => e.teachers_fte ?? null,
+    format: (v) => (v == null ? nullDash() : formatFte(v)),
+  },
+  {
+    key: "st_ratio",
+    label: "Student : teacher ratio",
+    value: (e) =>
+      e.teachers_fte && e.total_enrollment
+        ? e.total_enrollment / e.teachers_fte
+        : null,
+    format: (v) => (v == null ? nullDash() : `${v.toFixed(1)} : 1`),
+  },
+  {
+    key: "counselors_fte",
+    label: "Counselors FTE",
+    value: (e) => e.counselors_fte ?? null,
+    format: (v) => (v == null ? nullDash() : formatFte(v)),
+  },
+  {
+    key: "sc_ratio",
+    label: "Student : counselor ratio",
+    value: (e) =>
+      e.counselors_fte && e.total_enrollment
+        ? e.total_enrollment / e.counselors_fte
+        : null,
+    format: (v) => (v == null ? nullDash() : `${Math.round(v)} : 1`),
+  },
+  {
+    key: "certified",
+    label: "Certified teachers",
+    value: (e) => {
+      const num = e.teachers_certified_fte;
+      const denom = e.teachers_fte_crdc;
+      if (num == null || denom == null || denom <= 0) return null;
+      return (num / denom) * 100;
+    },
+    format: (v) => {
+      if (v == null) return nullDash();
+      if (v > 100) return ">100%";
+      return `${v.toFixed(1)}%`;
+    },
+  },
+];
+
+const COMPARE_SECTIONS = [
+  { id: "race", title: "Race / ethnicity", rows: RACE_ROWS, firstColLabel: "Group" },
+  { id: "programs", title: "Programs", rows: PROGRAM_ROWS, firstColLabel: "Metric" },
+  { id: "community", title: "Community", rows: COMMUNITY_ROWS, firstColLabel: "Metric" },
+  { id: "discipline", title: "Discipline", rows: DISCIPLINE_ROWS, firstColLabel: "Metric" },
+  { id: "teachers", title: "Teachers & staff", rows: TEACHERS_ROWS, firstColLabel: "Metric" },
+] as const;
+
+function captionFor(id: string): string {
+  if (id === "race") return `CCD ${CCD_YEAR}`;
+  if (id === "programs") return `CCD ${CCD_YEAR} • CRDC ${CRDC_YEAR}`;
+  if (id === "community") return `SAIPE ${SAIPE_YEAR} • ACS ${ACS_YEAR}`;
+  if (id === "discipline") return `CRDC ${CRDC_YEAR}`;
+  return `CCD ${CCD_YEAR} • CRDC ${CRDC_YEAR}`;
+}
+
+function CompareView({
+  entities,
+  onRemoveEntity,
+}: {
+  entities: Entity[];
+  onRemoveEntity?: (id: number) => void;
+}) {
+  return (
+    <div className="space-y-8 pt-2">
+      {entities.length > 8 && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          Comparing {entities.length} entities — beyond ~8 the table gets
+          hard to scan. Consider narrowing the selection or switching to
+          Aggregate.
+        </p>
+      )}
+
+      {COMPARE_SECTIONS.map((s) => (
+        <CompareSection
+          key={s.id}
+          id={s.id}
+          title={s.title}
+          caption={captionFor(s.id)}
+          subtitle={
+            s.id === "community"
+              ? "Residents in the district boundary, not enrolled students. Schools have no boundary-level data."
+              : undefined
+          }
+        >
+          <CompareTable
+            entities={entities}
+            rows={s.rows}
+            firstColLabel={s.firstColLabel}
+            onRemoveEntity={onRemoveEntity}
+          />
+        </CompareSection>
+      ))}
+    </div>
+  );
+}
+
+function CompareSection({
+  id,
+  title,
+  subtitle,
+  caption,
+  children,
+}: {
+  id: string;
+  title: string;
+  subtitle?: string;
+  caption?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section id={id} className="scroll-mt-4">
+      <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+      {subtitle && <p className="mt-1 text-xs text-gray-500">{subtitle}</p>}
+      {caption && (
+        <p className="mt-1 text-[11px] uppercase tracking-wide text-gray-400">
+          {caption}
+        </p>
+      )}
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+function CompareTable({
+  entities,
+  rows,
+  firstColLabel = "Metric",
+  onRemoveEntity,
+}: {
+  entities: Entity[];
+  rows: CompareRow[];
+  firstColLabel?: string;
+  onRemoveEntity?: (id: number) => void;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="text-sm">
+        <thead className="sticky top-0 z-20 bg-white shadow-[0_1px_0_0_rgb(229,231,235)]">
+          <tr className="text-xs uppercase tracking-wide text-gray-500">
+            <th
+              className={`sticky left-0 z-30 bg-white px-3 py-2 text-left ${LABEL_COL_WIDTH}`}
+            >
+              {firstColLabel}
+            </th>
+            {entities.map((e) => (
+              <th
+                key={e.id}
+                className="min-w-[10rem] bg-white px-3 py-2 text-right"
+              >
+                <CompareEntityHeader
+                  entity={e}
+                  onRemove={onRemoveEntity}
+                />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.key} className="border-t border-gray-100">
+              <td
+                className={`sticky left-0 z-10 bg-white px-3 py-1.5 whitespace-normal sm:whitespace-nowrap ${LABEL_COL_WIDTH}`}
+              >
+                {row.label}
+              </td>
+              {entities.map((e) => (
+                <td
+                  key={e.id}
+                  className="px-3 py-1.5 text-right tabular-nums"
+                >
+                  {row.format(row.value(e))}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CompareEntityHeader({
+  entity,
+  onRemove,
+}: {
+  entity: Entity;
+  onRemove?: (id: number) => void;
+}) {
+  const truncated =
+    entity.name.length > 24 ? entity.name.slice(0, 22) + "…" : entity.name;
+  return (
+    <div className="flex items-start justify-end gap-1 whitespace-nowrap">
+      <div className="flex flex-col items-end">
+        <span
+          className="font-semibold normal-case text-gray-900"
+          title={entity.name}
+        >
+          {truncated}
+        </span>
+        <span className="text-[10px] font-normal normal-case text-gray-500">
+          {entity.entity_type.toUpperCase()} · {entity.state ?? "—"} ·{" "}
+          {entity.nces_id}
+        </span>
+      </div>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={() => onRemove(entity.id)}
+          className="rounded p-0.5 text-gray-400 hover:bg-red-50 hover:text-red-700"
+          aria-label={`Remove ${entity.name}`}
+          title={`Remove ${entity.name}`}
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            aria-hidden="true"
+          >
+            <path
+              d="M3 3l6 6M9 3l-6 6"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function pctFormat(v: number | null): React.ReactNode {
+  if (v == null) return nullDash();
+  return `${v.toFixed(1)}%`;
+}
+
+function intFormat(v: number | null): React.ReactNode {
+  if (v == null) return nullDash();
+  return formatInt(v);
+}
+
+function nullDash() {
+  return <span className="text-gray-400">—</span>;
+}
+
+// =============================================================================
 // Export menu (unchanged behavior, lifted out for layout)
 // =============================================================================
 
-function ExportMenu({ agg, entities }: Props) {
+function ExportMenu({
+  agg,
+  entities,
+}: {
+  agg: Aggregate;
+  entities: Entity[];
+}) {
   function download(name: string, mime: string, body: string) {
     const blob = new Blob([body], { type: mime });
     const url = URL.createObjectURL(blob);
@@ -1468,7 +2097,7 @@ function ExportMenu({ agg, entities }: Props) {
   return (
     <div className="relative">
       <details className="group">
-        <summary className="cursor-pointer list-none rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+        <summary className="cursor-pointer list-none rounded-md border border-gray-300 bg-white px-3 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
           Export ▾
         </summary>
         <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded-md border border-gray-200 bg-white py-1 shadow-lg">

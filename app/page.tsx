@@ -1,12 +1,36 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { EntityAutocomplete } from "./components/EntityAutocomplete";
 import { FileUpload } from "./components/FileUpload";
 import { MatchReview } from "./components/MatchReview";
 import { ResultsPanel } from "./components/ResultsPanel";
 import { SelectedEntities } from "./components/SelectedEntities";
 import { Aggregate, Entity, MatchResult, SearchHit } from "@/lib/types";
+
+export type ViewMode = "aggregate" | "compare";
+
+// Parse ?ids=…&mode=… from the URL once on mount.
+function parseUrlState(): { ids: number[]; mode: ViewMode } {
+  if (typeof window === "undefined") return { ids: [], mode: "aggregate" };
+  const params = new URLSearchParams(window.location.search);
+  const idStr = params.get("ids") ?? "";
+  const ids = idStr
+    .split(",")
+    .map((s) => parseInt(s, 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const mode: ViewMode =
+    params.get("mode") === "compare" ? "compare" : "aggregate";
+  return { ids, mode };
+}
+
+// Convert an Entity (returned by /api/aggregate) into the SearchHit shape
+// used by selection state. SearchHit was originally the autocomplete
+// result type; for URL-loaded selections we don't have match metadata,
+// so synthesize a "code" match with full confidence.
+function entityToHit(e: Entity): SearchHit {
+  return { ...e, match_kind: "code", similarity: 1 };
+}
 
 // Find selected entities that are nested inside another selected entity —
 // e.g. a school whose LEA is also selected, or an LEA whose SEA is also
@@ -35,11 +59,17 @@ function findOverlaps(selected: SearchHit[]): {
 
 export default function Page() {
   const [selected, setSelected] = useState<SearchHit[]>([]);
+  const [mode, setMode] = useState<ViewMode>("aggregate");
   const [pendingMatches, setPendingMatches] = useState<MatchResult[] | null>(
     null
   );
   const [agg, setAgg] = useState<{ entities: Entity[]; aggregate: Aggregate } | null>(null);
   const [aggLoading, setAggLoading] = useState(false);
+  // Tracks whether the initial URL-load fetch has finished (or was a no-op
+  // for an empty URL). Until then the regular selection→aggregate effect
+  // must skip — otherwise it'd race with the URL-load fetch and double-
+  // call /api/aggregate on the first paint.
+  const initialLoadDone = useRef(false);
 
   const { overlappingIds, parentNames } = useMemo(
     () => findOverlaps(selected),
@@ -50,8 +80,40 @@ export default function Page() {
     setSelected((s) => s.filter((e) => !overlappingIds.has(e.id)));
   }
 
-  // Re-aggregate whenever selection changes.
+  // Initial mount: hydrate selection and mode from the URL. If `ids` are
+  // present, do an aggregate fetch and seed both `selected` and `agg`
+  // from the response (rather than letting the regular effect handle it
+  // separately, which would mean a brief empty render).
   useEffect(() => {
+    const { ids, mode: urlMode } = parseUrlState();
+    setMode(urlMode);
+    if (ids.length === 0) {
+      initialLoadDone.current = true;
+      return;
+    }
+    setAggLoading(true);
+    fetch("/api/aggregate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    })
+      .then((r) => r.json())
+      .then((b: { entities: Entity[]; aggregate: Aggregate }) => {
+        setSelected(b.entities.map(entityToHit));
+        setAgg(b);
+      })
+      .catch((e) => console.error(e))
+      .finally(() => {
+        setAggLoading(false);
+        initialLoadDone.current = true;
+      });
+    // empty deps: only on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Re-aggregate whenever selection changes (after initial load).
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
     if (selected.length === 0) {
       setAgg(null);
       return;
@@ -73,6 +135,21 @@ export default function Page() {
       .finally(() => setAggLoading(false));
     return () => ac.abort();
   }, [selected]);
+
+  // Sync URL whenever selection or mode changes. `replaceState` keeps
+  // browser-history clean (no entry per click); copy-paste of the URL
+  // still reproduces the exact view.
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const params = new URLSearchParams();
+    if (selected.length > 0) {
+      params.set("ids", selected.map((s) => s.id).join(","));
+    }
+    if (mode === "compare") params.set("mode", "compare");
+    const qs = params.toString();
+    const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    window.history.replaceState(null, "", url);
+  }, [selected, mode]);
 
   function addHit(hit: SearchHit) {
     setSelected((s) => (s.some((x) => x.id === hit.id) ? s : [...s, hit]));
@@ -158,7 +235,13 @@ export default function Page() {
         <p className="text-sm text-gray-500">Aggregating…</p>
       )}
       {agg && !aggLoading && (
-        <ResultsPanel agg={agg.aggregate} entities={agg.entities} />
+        <ResultsPanel
+          agg={agg.aggregate}
+          entities={agg.entities}
+          mode={mode}
+          onModeChange={setMode}
+          onRemoveEntity={removeId}
+        />
       )}
     </main>
   );
