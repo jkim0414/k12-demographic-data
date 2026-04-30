@@ -162,13 +162,17 @@ export const DEMOGRAPHIC_SOURCE: Record<DemographicField, string> = {
   swd: CRDC_YEAR,
 };
 
+// Order matches COMMUNITY_RACE_FIELDS and DISCIPLINE_RACE_TO_ENROLLED so
+// every race-keyed table in the app reads in the same sequence. Follows
+// the NCES-conventional ordering (white, black, hispanic, asian, AIAN,
+// NHPI, two-or-more) rather than alphabetical.
 export const RACE_FIELDS: DemographicField[] = [
-  "am_indian",
-  "asian",
+  "white",
   "black",
   "hispanic",
+  "asian",
+  "am_indian",
   "pacific_islander",
-  "white",
   "two_or_more",
 ];
 
