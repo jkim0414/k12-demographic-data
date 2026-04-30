@@ -13,7 +13,7 @@ single view.
 | Source                         | Vintage    | What it provides |
 | ------------------------------ | ---------- | ---------------- |
 | **NCES Common Core of Data**   | 2023-24    | Enrollment, race/ethnicity of enrolled students, FRL, teacher and counselor FTE |
-| **Civil Rights Data Collection** (CRDC) | 2021-22 | English learners, students with disabilities, teacher certification, first-year teachers, teacher absenteeism |
+| **Civil Rights Data Collection** (CRDC) | 2021-22 | English learners, students with disabilities, teacher certification, first-year teachers, teacher absenteeism, discipline counts (suspension, expulsion, law-enforcement referral, arrest) with race × disability breakdown |
 | **Census SAIPE**               | 2023-24    | Total population and school-age (5–17) population in poverty within district boundaries |
 | **Census ACS 5-year**          | 2019-2023  | Community race/ethnicity and median household income within district boundaries |
 
@@ -36,6 +36,11 @@ joined to NCES districts via state FIPS + 5-digit district code.
   public-school capture rate (enrolled ÷ school-age residents).
 - **Side-by-side enrolled vs. community race/ethnicity** with a colored
   gap badge so you can see who attends vs. who lives in the boundary.
+- **Discipline disparity** — a race-disparity-ratio matrix (each
+  group's discipline rate as a multiple of the overall rate) plus a
+  disability-disparity table comparing SWD vs. overall rates.
+- **Collapsible sections** — every section header expands/collapses;
+  anchor-nav clicks auto-expand the target section before scrolling.
 - **Coverage flags** on every aggregated number — partial-coverage
   metrics show `(N/M)` in amber with a tooltip; entities missing a
   value show a dotted-underline `—` with a "not reported by …" tooltip.
@@ -59,6 +64,13 @@ These are *upstream* data realities, surfaced honestly in the UI:
 - **Some LEAs entirely suppress an EL row** in CRDC for a given cycle
   (e.g. SFUSD 2021-22). Those entities show a dotted `—` with a
   "Not reported or suppressed by CRDC 2021-22 for this entity" tooltip.
+- **CRDC's `disability` code flips between endpoints.** In the
+  enrollment endpoint, `disability=1` is IDEA-served (SWD). In the
+  discipline endpoint it's also `disability=1`, but in some other
+  CRDC tables it's `disability=2`. Always reconcile against a known
+  school before trusting one — comments in
+  `scripts/ingest-discipline.ts` and `scripts/ingest-crdc.ts` call
+  this out.
 
 ## Quick start
 
@@ -103,17 +115,19 @@ run the four ingest scripts in this order. Each is idempotent and
 re-runnable.
 
 ```bash
-YEAR=2023 npm run db:ingest               # CCD: 19,637 LEAs + 102,274 schools (~40 min)
-YEAR=2021 npm run db:ingest:crdc          # CRDC EL/SWD/teacher quality (~5 min)
-YEAR=2023 npm run db:patch:ccd-lea-staff  # Re-pulls LEA staff totals (~2 min)
-YEAR=2023 npm run db:ingest:saipe         # Census SAIPE (~30 sec)
-YEAR=2023 npm run db:ingest:acs           # Census ACS race + income (~3 min)
-npm run db:rename-seas                    # SEA names: "06" → "California State Education Agency"
+YEAR=2023 npm run db:ingest                # CCD: 19,637 LEAs + 102,274 schools (~40 min)
+YEAR=2021 npm run db:ingest:crdc           # CRDC EL/SWD/teacher quality (~5 min)
+YEAR=2023 npm run db:patch:ccd-lea-staff   # Re-pulls LEA staff totals (~2 min)
+YEAR=2023 npm run db:patch:cep             # CCD CEP participation flag (~1 min)
+YEAR=2021 npm run db:ingest:discipline     # CRDC discipline counts + race × disability (~15 min)
+YEAR=2023 npm run db:ingest:saipe          # Census SAIPE (~30 sec)
+YEAR=2023 npm run db:ingest:acs            # Census ACS race + income (~3 min)
+npm run db:rename-seas                     # SEA names: "06" → "California State Education Agency"
 ```
 
-**Run the patch *after* CRDC**, not before — CRDC's reset step
-nullifies counselor FTE for non-LEA entities, so the LEA-staff patch
-must repopulate them.
+**Run the CCD-LEA-staff patch *after* CRDC**, not before — CRDC's
+reset step nullifies counselor FTE for non-LEA entities, so the
+LEA-staff patch must repopulate them.
 
 For schema migrations on an existing database (rather than a fresh
 `npm run db:schema`), apply the SQL files in `scripts/migrate-*.sql` in
@@ -149,6 +163,11 @@ override them in the review table before they're aggregated.
   *population-weighted* average of LEA medians. True grand medians
   require microdata; this approximates state-level published medians
   within ~1–2%.
+- **Discipline rates** divide unique-students-disciplined by enrolled
+  students. Race-disparity ratios divide a group's rate by the overall
+  rate (1.0× = no disparity). Both denominators come from CCD
+  enrollment, not CRDC's own enrollment table, so a school not in
+  CRDC's release won't contribute to the discipline aggregate at all.
 
 ## Project layout
 
@@ -180,12 +199,16 @@ scripts/
   ingest-crdc.ts                   CRDC: EL, SWD, teacher quality
   ingest-saipe.ts                  Census SAIPE: population + child poverty
   ingest-acs.ts                    Census ACS: community race + income
+  ingest-discipline.ts             CRDC discipline counts (race × disability)
   patch-ccd-lea-staff.ts           Refetch LEA staff totals from CCD
+  patch-cep.ts                     CCD CEP-participation flag
   rename-seas.ts                   Rename SEAs from FIPS code to full state name
-  migrate-add-staff.sql            ALTER TABLE migrations applied between schema versions
+  migrate-add-staff.sql            ALTER TABLE migrations, applied in order
   migrate-add-community.sql
   migrate-add-community-race.sql
   migrate-add-crdc-teachers.sql
+  migrate-add-cep.sql
+  migrate-add-discipline.sql
 ```
 
 ## Deploying to Vercel
