@@ -31,16 +31,29 @@ joined to NCES districts via state FIPS + 5-digit district code.
   fuzzy match by name (`pg_trgm` trigram similarity).
 - **Spreadsheet upload** — CSV/TSV/XLSX with a name or NCES-ID column;
   ambiguous matches go to a review table before aggregation.
-- **Aggregation across selected entities** with enrollment-weighted
-  percentages, population-weighted median income, and a derived
-  public-school capture rate (enrolled ÷ school-age residents).
-- **Side-by-side enrolled vs. community race/ethnicity** with a colored
-  gap badge so you can see who attends vs. who lives in the boundary.
-- **Discipline disparity** — a race-disparity-ratio matrix (each
-  group's discipline rate as a multiple of the overall rate) plus a
-  disability-disparity table comparing SWD vs. overall rates.
-- **Collapsible sections** — every section header expands/collapses;
-  anchor-nav clicks auto-expand the target section before scrolling.
+- **Two view modes**:
+  - **Aggregate** — sums the selected entities into one composite,
+    with enrollment-weighted percentages, a population-weighted
+    median income, and a derived public-school capture rate
+    (enrolled ÷ school-age residents).
+  - **Compare** — transposes the data (metrics as rows, entities as
+    columns) so you can compare a few districts side-by-side without
+    summing them. Sticky thead + sticky metric column keep labels
+    anchored as you scroll. Toggle hidden when fewer than 2 entities
+    are selected.
+- **Shareable URLs** — the selection and view mode round-trip through
+  `?ids=…&mode=compare`. Copy-paste the URL into another tab or send
+  to a colleague to reproduce the exact view.
+- **Side-by-side enrolled vs. community race/ethnicity** (aggregate
+  mode) with a colored gap badge so you can see who attends vs. who
+  lives in the boundary.
+- **Discipline disparity** (aggregate mode) — a race-disparity-ratio
+  matrix (each group's discipline rate as a multiple of the white
+  rate) plus a disability-disparity table comparing SWD vs. non-SWD
+  rates.
+- **Collapsible sections** (aggregate mode) — every section header
+  expands/collapses; anchor-nav clicks auto-expand the target
+  section before scrolling.
 - **Coverage flags** on every aggregated number — partial-coverage
   metrics show `(N/M)` in amber with a tooltip; entities missing a
   value show a dotted-underline `—` with a "not reported by …" tooltip.
@@ -164,10 +177,15 @@ override them in the review table before they're aggregated.
   require microdata; this approximates state-level published medians
   within ~1–2%.
 - **Discipline rates** divide unique-students-disciplined by enrolled
-  students. Race-disparity ratios divide a group's rate by the overall
-  rate (1.0× = no disparity). Both denominators come from CCD
-  enrollment, not CRDC's own enrollment table, so a school not in
-  CRDC's release won't contribute to the discipline aggregate at all.
+  students. Race-disparity ratios divide a group's rate by the white
+  student rate (the standard civil-rights framing); disability ratios
+  divide SWD rate by non-SWD rate. White rows pin at 1.0× by
+  definition. Cells suppress when the reference group's enrollment
+  is below a 10-student threshold.
+- **Compare mode** preserves entity order. The user's selection
+  order is what `?ids=...` encodes; `/api/aggregate` returns rows in
+  that order via `ORDER BY array_position(ids, id)` rather than
+  Postgres physical-storage order.
 
 ## Project layout
 
@@ -182,6 +200,7 @@ app/
     FileUpload.tsx                       CSV/TSV/XLSX parser
     MatchReview.tsx                      ambiguous-match confirm screen
     ResultsPanel.tsx                     headline strip + nav + tables
+                                         + Aggregate / Compare modes
     SelectedEntities.tsx                 entity pill list
     Tooltip.tsx                          portal-rendered hover tooltip
   layout.tsx
