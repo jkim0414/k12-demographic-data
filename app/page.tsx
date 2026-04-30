@@ -95,7 +95,7 @@ export default function Page() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
+    <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
       <header className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">
           K-12 District Data Explorer

@@ -42,6 +42,66 @@ export type Entity = {
   median_household_income: number | null;
   acs_year: string | null;
   cep_participating: boolean | null;
+  discipline: DisciplineCounts | null;
+};
+
+// Per-entity discipline counts from CRDC. Five headline metrics, each
+// broken down by total / SWD / seven racial groups. Null at the entity
+// level when CRDC suppressed everything for that school's release; for
+// rolled-up LEAs and SEAs, the rollup sums whatever its descendant
+// schools reported.
+export type DisciplineMetric =
+  | "in_school_susp"
+  | "out_school_susp"
+  | "expulsion"
+  | "law_enforcement_ref"
+  | "arrest";
+
+export const DISCIPLINE_METRICS: DisciplineMetric[] = [
+  "in_school_susp",
+  "out_school_susp",
+  "expulsion",
+  "law_enforcement_ref",
+  "arrest",
+];
+
+export const DISCIPLINE_METRIC_LABELS: Record<DisciplineMetric, string> = {
+  in_school_susp: "In-school suspension",
+  out_school_susp: "Out-of-school suspension",
+  expulsion: "Expulsion",
+  law_enforcement_ref: "Referred to law enforcement",
+  arrest: "School-related arrest",
+};
+
+export type DisciplineGroup =
+  | "total"
+  | "swd"
+  | "white"
+  | "black"
+  | "hispanic"
+  | "asian"
+  | "am_indian"
+  | "pacific_islander"
+  | "two_or_more";
+
+export type DisciplineCounts = Record<
+  DisciplineMetric,
+  Record<DisciplineGroup, number>
+>;
+
+// Maps discipline race-group keys back to enrolled-race fields, so the
+// UI can compute "Black students disciplined ÷ Black students enrolled".
+export const DISCIPLINE_RACE_TO_ENROLLED: Record<
+  Exclude<DisciplineGroup, "total" | "swd">,
+  DemographicField
+> = {
+  white: "white",
+  black: "black",
+  hispanic: "hispanic",
+  asian: "asian",
+  am_indian: "am_indian",
+  pacific_islander: "pacific_islander",
+  two_or_more: "two_or_more",
 };
 
 export type SearchHit = Entity & {
@@ -147,6 +207,13 @@ export type Aggregate = {
   // Eligibility Provision). Surfaced as a flag on the FRL row because
   // CEP changes how FRL counts are reported.
   cep_count: number;
+  // Summed discipline counts (one bucket per metric × group) plus the
+  // count of entities that contributed any reported data. UI computes
+  // rates and disparity ratios from these and from breakdown totals.
+  discipline: {
+    counts: DisciplineCounts;
+    coverage: number; // entities with non-null discipline JSON
+  };
 };
 
 // Staff FTE fields. Sourced from CCD directory for teachers/staff/counselors

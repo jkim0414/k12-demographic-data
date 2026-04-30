@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import {
   ACS_YEAR,
   Aggregate,
@@ -8,7 +9,11 @@ import {
   DEMOGRAPHIC_FIELDS,
   DEMOGRAPHIC_LABELS,
   DEMOGRAPHIC_SOURCE,
+  DISCIPLINE_METRIC_LABELS,
+  DISCIPLINE_METRICS,
+  DISCIPLINE_RACE_TO_ENROLLED,
   DemographicField,
+  DisciplineMetric,
   ENROLLED_TO_COMMUNITY,
   Entity,
   RACE_FIELDS,
@@ -35,11 +40,43 @@ type Props = {
 export function ResultsPanel({ agg, entities }: Props) {
   const sections = visibleSections(agg);
 
+  // Sections start expanded. Users can collapse any. Anchor-nav clicks
+  // also auto-expand the target so clicking a nav pill never scrolls to
+  // a closed section.
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(
+    () => {
+      const init: Record<string, boolean> = {};
+      for (const id of sections) init[id] = true;
+      return init;
+    }
+  );
+
+  const toggle = useCallback((id: string) => {
+    setOpenSections((s) => ({ ...s, [id]: !s[id] }));
+  }, []);
+
+  const openAndScroll = useCallback((id: string) => {
+    setOpenSections((s) => ({ ...s, [id]: true }));
+    // Defer scroll so the section's body has rendered before we scroll
+    // (otherwise the browser scrolls to the still-collapsed header
+    // position, which under-shoots).
+    requestAnimationFrame(() => {
+      const el = document.getElementById(id);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, []);
+
+  const sectionProps = (id: string) => ({
+    id,
+    open: openSections[id] ?? true,
+    onToggle: () => toggle(id),
+  });
+
   return (
     <div className="space-y-6">
       {/* Aggregate card */}
       <div className="rounded-lg border border-gray-300 bg-white">
-        <div className="border-b border-gray-200 px-5 pb-4 pt-5">
+        <div className="border-b border-gray-200 px-3 pb-4 pt-5 sm:px-5">
           <div className="flex items-baseline justify-between gap-4">
             <h2 className="text-lg font-semibold">Aggregate</h2>
             <ExportMenu agg={agg} entities={entities} />
@@ -47,12 +84,12 @@ export function ResultsPanel({ agg, entities }: Props) {
           <HeadlineStrip agg={agg} />
         </div>
 
-        <AnchorNav sections={sections} />
+        <AnchorNav sections={sections} onJump={openAndScroll} />
 
-        <div className="px-5 pb-5">
+        <div className="px-3 pb-5 sm:px-5">
           {sections.includes("race") && (
             <Section
-              id="race"
+              {...sectionProps("race")}
               title="Race / ethnicity"
               caption={
                 agg.community.community_population_acs.coverage > 0
@@ -66,7 +103,7 @@ export function ResultsPanel({ agg, entities }: Props) {
 
           {sections.includes("programs") && (
             <Section
-              id="programs"
+              {...sectionProps("programs")}
               title="Programs"
               caption={`CCD ${CCD_YEAR} • CRDC ${CRDC_YEAR}`}
             >
@@ -74,9 +111,20 @@ export function ResultsPanel({ agg, entities }: Props) {
             </Section>
           )}
 
+          {sections.includes("discipline") && (
+            <Section
+              {...sectionProps("discipline")}
+              title="Discipline"
+              subtitle="Counts are unique students who experienced each action, not incidents. Rates are % of enrolled students; ratios compare each group's rate to the overall rate (1.0× = no disparity)."
+              caption={`CRDC ${CRDC_YEAR}`}
+            >
+              <DisciplineSection agg={agg} />
+            </Section>
+          )}
+
           {sections.includes("community") && (
             <Section
-              id="community"
+              {...sectionProps("community")}
               title="Community"
               subtitle="Residents in the district boundary, not enrolled students. Available for districts and states only — Census doesn't publish population at the school level."
               caption={`SAIPE ${SAIPE_YEAR} • ACS ${ACS_YEAR}`}
@@ -87,7 +135,7 @@ export function ResultsPanel({ agg, entities }: Props) {
 
           {sections.includes("teachers") && (
             <Section
-              id="teachers"
+              {...sectionProps("teachers")}
               title="Teachers & staff"
               caption={`CCD ${CCD_YEAR} • CRDC ${CRDC_YEAR}`}
             >
@@ -110,6 +158,9 @@ function visibleSections(agg: Aggregate): string[] {
   // programs: show if any program field has any coverage
   if (PROGRAM_FIELDS.some((f) => agg.breakdown[f].coverage > 0)) {
     out.push("programs");
+  }
+  if (agg.discipline.coverage > 0) {
+    out.push("discipline");
   }
   if (
     agg.community.population_total.coverage > 0 ||
@@ -192,7 +243,7 @@ function HeadlineStrip({ agg }: { agg: Aggregate }) {
   }
 
   return (
-    <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
+    <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 sm:gap-x-6 lg:grid-cols-6">
       {stats.map((s) => (
         <div key={s.label}>
           <dt className="text-[11px] uppercase tracking-wide text-gray-500">
@@ -223,25 +274,33 @@ function HeadlineStrip({ agg }: { agg: Aggregate }) {
 const SECTION_LABELS: Record<string, string> = {
   race: "Race / ethnicity",
   programs: "Programs",
+  discipline: "Discipline",
   community: "Community",
   teachers: "Teachers & staff",
 };
 
-function AnchorNav({ sections }: { sections: string[] }) {
+function AnchorNav({
+  sections,
+  onJump,
+}: {
+  sections: string[];
+  onJump: (id: string) => void;
+}) {
   if (sections.length <= 1) return null;
   return (
-    <nav className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 px-5 py-3 text-xs">
+    <nav className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 px-3 py-3 text-xs sm:px-5">
       <span className="font-medium uppercase tracking-wide text-gray-500">
         Jump to
       </span>
       {sections.map((id) => (
-        <a
+        <button
           key={id}
-          href={`#${id}`}
+          type="button"
+          onClick={() => onJump(id)}
           className="rounded-md border border-gray-300 bg-white px-2.5 py-1 font-medium text-gray-700 shadow-sm hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
         >
           {SECTION_LABELS[id]}
-        </a>
+        </button>
       ))}
     </nav>
   );
@@ -257,26 +316,66 @@ function Section({
   subtitle,
   caption,
   children,
+  open,
+  onToggle,
 }: {
   id: string;
   title: string;
   subtitle?: string;
   caption?: string;
   children: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
 }) {
   return (
     <section id={id} className="scroll-mt-4 pt-6 first:pt-4">
-      <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-      {subtitle && (
-        <p className="mt-1 text-xs text-gray-500">{subtitle}</p>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={`${id}-body`}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+        <Chevron open={open} />
+      </button>
+      {open && (
+        <div id={`${id}-body`}>
+          {subtitle && (
+            <p className="mt-1 text-xs text-gray-500">{subtitle}</p>
+          )}
+          {caption && (
+            <p className="mt-1 text-[11px] uppercase tracking-wide text-gray-400">
+              {caption}
+            </p>
+          )}
+          <div className="mt-3">{children}</div>
+        </div>
       )}
-      {caption && (
-        <p className="mt-1 text-[11px] uppercase tracking-wide text-gray-400">
-          {caption}
-        </p>
-      )}
-      <div className="mt-3">{children}</div>
     </section>
+  );
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+      className={`shrink-0 text-gray-400 transition-transform ${
+        open ? "rotate-180" : ""
+      }`}
+    >
+      <path
+        d="M5 7l5 5 5-5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -467,6 +566,7 @@ function RaceComparisonTable({ agg }: { agg: Aggregate }) {
 
   return (
     <>
+      <div className="overflow-x-auto">
       <MetricTable columns={columns}>
         {RACE_FIELDS.map((f) => {
           const b = agg.breakdown[f];
@@ -512,6 +612,7 @@ function RaceComparisonTable({ agg }: { agg: Aggregate }) {
           );
         })}
       </MetricTable>
+      </div>
       <div className="mt-2 space-y-1">
         {hasCommunity && (
           <p className="text-[11px] text-gray-400">
@@ -567,7 +668,7 @@ function ProgramsTable({ agg }: { agg: Aggregate }) {
   // squashing it into the value cell as a parenthetical. Coverage stays
   // in the rightmost column.
   return (
-    <div className="md:max-w-xl">
+    <div className="overflow-x-auto md:max-w-xl">
       <table className="w-full text-sm">
         <thead>
           <tr className="text-xs uppercase tracking-wide text-gray-500">
@@ -633,6 +734,242 @@ function ProgramsTable({ agg }: { agg: Aggregate }) {
 }
 
 // =============================================================================
+// Discipline section — three sub-tables: headline rates, disability gap,
+// race-ratio matrix
+// =============================================================================
+
+function DisciplineSection({ agg }: { agg: Aggregate }) {
+  const enrolled = agg.total_enrollment;
+  const counts = agg.discipline.counts;
+  const partial =
+    agg.discipline.coverage > 0 &&
+    agg.discipline.coverage < agg.entity_count;
+
+  // Per-metric overall rate (= total disciplined / total enrolled).
+  function rate(m: DisciplineMetric): number | null {
+    if (!enrolled) return null;
+    return (counts[m].total / enrolled) * 100;
+  }
+
+  // Suppress a metric row if every entity reported zero — that's
+  // typically an artifact of CRDC for that metric (e.g., expulsion is
+  // 0 at almost every school in the country, so total = 0 nationally
+  // is plausible but not informative). Show non-zero rows only.
+  const visibleMetrics = DISCIPLINE_METRICS.filter(
+    (m) => counts[m].total > 0
+  );
+
+  return (
+    <div className="space-y-6">
+      <DisciplineRatesTable agg={agg} metrics={visibleMetrics} rate={rate} />
+      <DisciplineSwdTable agg={agg} metrics={visibleMetrics} rate={rate} />
+      <DisciplineRaceMatrix agg={agg} metrics={visibleMetrics} rate={rate} />
+      {partial && (
+        <p className="text-[11px] text-amber-700">
+          Coverage: {agg.discipline.coverage}/{agg.entity_count} entities
+          reported CRDC discipline data; counts and rates above reflect
+          only the reporting subset.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function DisciplineRatesTable({
+  agg,
+  metrics,
+  rate,
+}: {
+  agg: Aggregate;
+  metrics: DisciplineMetric[];
+  rate: (m: DisciplineMetric) => number | null;
+}) {
+  const counts = agg.discipline.counts;
+  return (
+    <div>
+      <div className="overflow-x-auto md:max-w-xl">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs uppercase tracking-wide text-gray-500">
+              <th className="py-1.5 text-left">Metric</th>
+              <th className="py-1.5 text-right">Students</th>
+              <th className="py-1.5 text-right">Enrolled %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {metrics.map((m) => {
+              const total = counts[m].total;
+              const r = rate(m);
+              return (
+                <tr key={m} className="border-t border-gray-100">
+                  <td className="py-1.5">{DISCIPLINE_METRIC_LABELS[m]}</td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {formatInt(total)}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {r != null ? `${r.toFixed(2)}%` : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function DisciplineSwdTable({
+  agg,
+  metrics,
+  rate,
+}: {
+  agg: Aggregate;
+  metrics: DisciplineMetric[];
+  rate: (m: DisciplineMetric) => number | null;
+}) {
+  const counts = agg.discipline.counts;
+  const swdEnrolled = agg.breakdown.swd.total;
+  if (swdEnrolled <= 0) return null;
+
+  return (
+    <div>
+      <div className="overflow-x-auto md:max-w-xl">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs uppercase tracking-wide text-gray-500">
+              <th className="py-1.5 text-left">Metric</th>
+              <th className="py-1.5 text-right">Overall %</th>
+              <th className="py-1.5 text-right">SWD %</th>
+              <th className="py-1.5 text-right">Gap (pts)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {metrics.map((m) => {
+              const overall = rate(m);
+              const swd =
+                counts[m].swd > 0 && swdEnrolled > 0
+                  ? (counts[m].swd / swdEnrolled) * 100
+                  : null;
+              const gap =
+                overall != null && swd != null ? swd - overall : null;
+              return (
+                <tr key={m} className="border-t border-gray-100">
+                  <td className="py-1.5">{DISCIPLINE_METRIC_LABELS[m]}</td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {overall != null ? `${overall.toFixed(2)}%` : "—"}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {swd != null ? `${swd.toFixed(2)}%` : "—"}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    <GapBadge gap={gap} />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function DisciplineRaceMatrix({
+  agg,
+  metrics,
+  rate,
+}: {
+  agg: Aggregate;
+  metrics: DisciplineMetric[];
+  rate: (m: DisciplineMetric) => number | null;
+}) {
+  const counts = agg.discipline.counts;
+  const races = Object.keys(DISCIPLINE_RACE_TO_ENROLLED) as Array<
+    keyof typeof DISCIPLINE_RACE_TO_ENROLLED
+  >;
+
+  return (
+    <div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs uppercase tracking-wide text-gray-500">
+              <th className="py-1.5 text-left">Group</th>
+              {metrics.map((m) => (
+                <th key={m} className="py-1.5 text-right">
+                  {SHORT_METRIC[m]}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {races.map((race) => {
+              const enrolledField = DISCIPLINE_RACE_TO_ENROLLED[race];
+              const raceEnrolled = agg.breakdown[enrolledField].total;
+              return (
+                <tr key={race} className="border-t border-gray-100">
+                  <td className="py-1.5">{DEMOGRAPHIC_LABELS[enrolledField]}</td>
+                  {metrics.map((m) => {
+                    const overall = rate(m);
+                    const groupRate =
+                      counts[m][race] > 0 && raceEnrolled > 0
+                        ? (counts[m][race] / raceEnrolled) * 100
+                        : null;
+                    const ratio =
+                      overall != null && overall > 0 && groupRate != null
+                        ? groupRate / overall
+                        : null;
+                    return (
+                      <td
+                        key={m}
+                        className="py-1.5 text-right tabular-nums"
+                      >
+                        <RatioBadge ratio={ratio} />
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-[11px] text-gray-400">
+        1.0× = group is disciplined at the overall rate. Numbers above 1.0×
+        indicate over-representation among disciplined students relative to
+        that group&apos;s share of enrollment; below 1.0× indicates
+        under-representation.
+      </p>
+    </div>
+  );
+}
+
+const SHORT_METRIC: Record<DisciplineMetric, string> = {
+  in_school_susp: "Susp. (in)",
+  out_school_susp: "Susp. (out)",
+  expulsion: "Expulsion",
+  law_enforcement_ref: "LE referral",
+  arrest: "Arrest",
+};
+
+function RatioBadge({ ratio }: { ratio: number | null }) {
+  if (ratio == null || !isFinite(ratio))
+    return <span className="text-gray-400">—</span>;
+  // Color the cell by direction and magnitude. A ±10% band reads as
+  // basically equal; larger gaps get colored.
+  const color =
+    Math.abs(ratio - 1) < 0.1
+      ? "text-gray-500"
+      : ratio > 1
+      ? "text-amber-700"
+      : "text-blue-700";
+  return (
+    <span className={`tabular-nums ${color}`}>{ratio.toFixed(2)}×</span>
+  );
+}
+
+// =============================================================================
 // Community table
 // =============================================================================
 
@@ -658,6 +995,7 @@ function CommunityTable({ agg }: { agg: Aggregate }) {
   ];
 
   return (
+    <div className="overflow-x-auto">
     <MetricTable columns={columns}>
       <MetricRow
         label="Total population"
@@ -724,6 +1062,7 @@ function CommunityTable({ agg }: { agg: Aggregate }) {
         total={agg.entity_count}
       />
     </MetricTable>
+    </div>
   );
 }
 
@@ -860,6 +1199,7 @@ function TeachersTable({ agg }: { agg: Aggregate }) {
   if (visible.length === 0) return null;
 
   return (
+    <div className="overflow-x-auto">
     <MetricTable columns={columns}>
       {visible.map((r) => (
         <MetricRow
@@ -876,6 +1216,7 @@ function TeachersTable({ agg }: { agg: Aggregate }) {
         />
       ))}
     </MetricTable>
+    </div>
   );
 }
 
@@ -899,7 +1240,7 @@ function percentOfTeachersCrdc(
 function EntitiesCard({ entities }: { entities: Entity[] }) {
   return (
     <div className="rounded-lg border border-gray-300 bg-white">
-      <div className="border-b border-gray-200 px-5 py-4">
+      <div className="border-b border-gray-200 px-3 py-4 sm:px-5">
         <h2 className="text-lg font-semibold">
           Included entities{" "}
           <span className="text-sm font-normal text-gray-500">
@@ -907,8 +1248,8 @@ function EntitiesCard({ entities }: { entities: Entity[] }) {
           </span>
         </h2>
       </div>
-      <div className="max-h-[420px] overflow-y-auto px-5 py-3">
-        <table className="w-full text-sm">
+      <div className="max-h-[420px] overflow-auto px-3 py-3 sm:px-5">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="sticky top-0 bg-white">
             <tr className="text-xs uppercase tracking-wide text-gray-500">
               <th className="py-2 text-left">Name</th>
@@ -1100,6 +1441,7 @@ function ExportMenu({ agg, entities }: Props) {
       "median_household_income",
       "acs_year",
       "cep_participating",
+      "discipline",
     ];
     const esc = (v: unknown) => {
       if (v == null) return "";

@@ -1,0 +1,15 @@
+-- CRDC discipline counts (Tier 3): per-school totals plus breakdowns by
+-- race and disability status, stored as JSONB so we can hold ~50 numbers
+-- per entity without bloating the column count. Aggregation happens in
+-- application code (we pull entity rows and sum in JS), so JSONB is
+-- preferable to a wide flat table here.
+--
+-- Shape (per entity):
+--   {
+--     "in_school_susp":     { "total":..., "swd":..., "white":..., ... },
+--     "out_school_susp":    { ... },
+--     "expulsion":          { ... },
+--     "law_enforcement_ref":{ ... },
+--     "arrest":             { ... }
+--   }
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS discipline JSONB;

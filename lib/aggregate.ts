@@ -2,10 +2,34 @@ import {
   Aggregate,
   COMMUNITY_FIELDS,
   DEMOGRAPHIC_FIELDS,
+  DISCIPLINE_METRICS,
   DemographicField,
+  DisciplineCounts,
+  DisciplineGroup,
   Entity,
   STAFF_FIELDS,
 } from "./types";
+
+const DISCIPLINE_GROUPS: DisciplineGroup[] = [
+  "total",
+  "swd",
+  "white",
+  "black",
+  "hispanic",
+  "asian",
+  "am_indian",
+  "pacific_islander",
+  "two_or_more",
+];
+
+function emptyDisciplineCounts(): DisciplineCounts {
+  const out = {} as DisciplineCounts;
+  for (const m of DISCIPLINE_METRICS) {
+    out[m] = {} as Record<DisciplineGroup, number>;
+    for (const g of DISCIPLINE_GROUPS) out[m][g] = 0;
+  }
+  return out;
+}
 
 export function aggregate(entities: Entity[]): Aggregate {
   const breakdown = {} as Aggregate["breakdown"];
@@ -87,6 +111,23 @@ export function aggregate(entities: Entity[]): Aggregate {
   let cep_count = 0;
   for (const e of entities) if (e.cep_participating) cep_count += 1;
 
+  // Discipline: deep-sum each metric × group across entities that
+  // reported. CRDC suppression is at the entity level (whole entity
+  // either has data or doesn't), so coverage is just the count of
+  // contributing entities.
+  const disciplineCounts = emptyDisciplineCounts();
+  let discipline_coverage = 0;
+  for (const e of entities) {
+    if (!e.discipline) continue;
+    discipline_coverage += 1;
+    for (const m of DISCIPLINE_METRICS) {
+      for (const g of DISCIPLINE_GROUPS) {
+        const v = e.discipline[m]?.[g];
+        if (typeof v === "number") disciplineCounts[m][g] += v;
+      }
+    }
+  }
+
   return {
     entity_count: entities.length,
     total_enrollment,
@@ -98,6 +139,10 @@ export function aggregate(entities: Entity[]): Aggregate {
       coverage: income_coverage,
     },
     cep_count,
+    discipline: {
+      counts: disciplineCounts,
+      coverage: discipline_coverage,
+    },
   };
 }
 

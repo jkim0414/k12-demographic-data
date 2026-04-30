@@ -13,6 +13,7 @@
     "db:ingest:crdc": "tsx --env-file=.env.local scripts/ingest-crdc.ts",
     "db:patch:ccd-lea-staff": "tsx --env-file=.env.local scripts/patch-ccd-lea-staff.ts",
     "db:patch:cep": "tsx --env-file=.env.local scripts/patch-cep.ts",
+    "db:ingest:discipline": "tsx --env-file=.env.local scripts/ingest-discipline.ts",
     "db:rename-seas": "tsx --env-file=.env.local scripts/rename-seas.ts",
     "db:ingest:saipe": "tsx --env-file=.env.local scripts/ingest-saipe.ts",
     "db:ingest:acs": "tsx --env-file=.env.local scripts/ingest-acs.ts"

@@ -40,7 +40,7 @@ export function MatchReview({ results, onConfirm, onCancel }: Props) {
 
   return (
     <div className="rounded-lg border border-gray-300 bg-white p-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-sm font-semibold">Review matches</h3>
           <p className="text-xs text-gray-500">
@@ -63,8 +63,8 @@ export function MatchReview({ results, onConfirm, onCancel }: Props) {
           </button>
         </div>
       </div>
-      <div className="max-h-96 overflow-y-auto">
-        <table className="w-full text-sm">
+      <div className="max-h-96 overflow-auto">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="sticky top-0 bg-gray-50 text-left text-xs uppercase text-gray-500">
             <tr>
               <th className="px-2 py-2">Include</th>
