@@ -13,10 +13,14 @@ import {
   DISCIPLINE_METRICS,
   DISCIPLINE_RACE_TO_ENROLLED,
   DemographicField,
+  DisciplineGroup,
   DisciplineMetric,
   ENROLLED_TO_COMMUNITY,
   Entity,
   RACE_FIELDS,
+  RESTRAINT_METRIC_LABELS,
+  RESTRAINT_METRICS,
+  RestraintMetric,
   SAIPE_YEAR,
 } from "@/lib/types";
 import { formatFte, formatInt, formatPct, formatRatio } from "@/lib/aggregate";
@@ -251,7 +255,9 @@ function visibleSections(agg: Aggregate): string[] {
   if (PROGRAM_FIELDS.some((f) => agg.breakdown[f].coverage > 0)) {
     out.push("programs");
   }
-  if (agg.discipline.coverage > 0) {
+  // The Discipline section's tables host both discipline and restraint
+  // metrics as columns, so show it whenever either source has data.
+  if (agg.discipline.coverage > 0 || agg.restraint.coverage > 0) {
     out.push("discipline");
   }
   // teachers: show if at least one staff field has coverage
@@ -861,18 +867,48 @@ function ProgramsTable({ agg }: { agg: Aggregate }) {
 // than risk a misleading number.
 const SMALL_N_THRESHOLD = 10;
 
-function DisciplineSection({ agg }: { agg: Aggregate }) {
-  const counts = agg.discipline.counts;
-  const partial =
-    agg.discipline.coverage > 0 &&
-    agg.discipline.coverage < agg.entity_count;
+// Unified metric vocabulary across the Discipline section's tables.
+// Discipline (5) + Restraint (3) live in different JSONB columns on the
+// entity but render side-by-side as 8 columns here.
+type Metric = DisciplineMetric | RestraintMetric;
 
+const ALL_METRICS: Metric[] = [...DISCIPLINE_METRICS, ...RESTRAINT_METRICS];
+
+const RESTRAINT_METRIC_SET = new Set<Metric>(RESTRAINT_METRICS);
+
+// Pulls a per-metric × per-group count from the right counts source. The
+// tables don't care which CRDC release a metric came from — they just
+// need a number per (metric, group) cell. Named `getCount` rather than
+// `metricCount` because `DisciplineColGroup` already takes a prop named
+// `metricCount`, and shadowing breaks call-site type inference.
+function getCount(agg: Aggregate, m: Metric, group: DisciplineGroup): number {
+  if (RESTRAINT_METRIC_SET.has(m)) {
+    return agg.restraint.counts[m as RestraintMetric][group] ?? 0;
+  }
+  return agg.discipline.counts[m as DisciplineMetric][group] ?? 0;
+}
+
+function DisciplineSection({ agg }: { agg: Aggregate }) {
   // Suppress a metric column if every entity reported zero — typically
   // an artifact of CRDC for that metric (e.g. expulsion is 0 at almost
-  // every school in the country).
-  const visibleMetrics = DISCIPLINE_METRICS.filter(
-    (m) => counts[m].total > 0
+  // every school in the country, and most schools have 0 mechanical
+  // restraint).
+  const visibleMetrics = ALL_METRICS.filter(
+    (m) => getCount(agg, m, "total") > 0
   );
+
+  // Coverage warning fires only when discipline data is partial; the
+  // restraint coverage is a separate axis and tracked just behind the
+  // scenes (entities without restraint data contribute 0 to a sum that's
+  // already fine on the discipline columns).
+  const partialDiscipline =
+    agg.discipline.coverage > 0 &&
+    agg.discipline.coverage < agg.entity_count;
+  const partialRestraint =
+    agg.restraint.coverage > 0 &&
+    agg.restraint.coverage < agg.entity_count;
+
+  if (visibleMetrics.length === 0) return null;
 
   return (
     <div className="space-y-6">
@@ -882,23 +918,27 @@ function DisciplineSection({ agg }: { agg: Aggregate }) {
         agg={agg}
         metrics={visibleMetrics}
       />
-      {partial && (
+      {(partialDiscipline || partialRestraint) && (
         <p className="text-[11px] text-amber-700">
-          Coverage: {agg.discipline.coverage}/{agg.entity_count} entities
-          reported CRDC discipline data; counts and rates above reflect
-          only the reporting subset.
+          Coverage: discipline {agg.discipline.coverage}/{agg.entity_count}
+          {", "}restraint {agg.restraint.coverage}/{agg.entity_count}.
+          Counts and rates above reflect only the reporting subset for
+          each metric.
         </p>
       )}
     </div>
   );
 }
 
-const SHORT_METRIC: Record<DisciplineMetric, string> = {
+const SHORT_METRIC: Record<Metric, string> = {
   in_school_susp: "Susp. (in)",
   out_school_susp: "Susp. (out)",
   expulsion: "Expulsion",
   law_enforcement_ref: "LE referral",
   arrest: "Arrest",
+  mech_restraint: "Mech. restraint",
+  phys_restraint: "Phys. restraint",
+  seclusion: "Seclusion",
 };
 
 // Cell renderer for a count + rate. Rate (% of group's enrollment) is
@@ -941,7 +981,7 @@ function DisciplineColGroup({ metricCount }: { metricCount: number }) {
   );
 }
 
-function DisciplineHead({ metrics }: { metrics: DisciplineMetric[] }) {
+function DisciplineHead({ metrics }: { metrics: Metric[] }) {
   return (
     <thead>
       <tr className="text-xs uppercase tracking-wide text-gray-500">
@@ -961,9 +1001,8 @@ function DisciplineByRaceTable({
   metrics,
 }: {
   agg: Aggregate;
-  metrics: DisciplineMetric[];
+  metrics: Metric[];
 }) {
-  const counts = agg.discipline.counts;
   const races = Object.keys(DISCIPLINE_RACE_TO_ENROLLED) as Array<
     keyof typeof DISCIPLINE_RACE_TO_ENROLLED
   >;
@@ -979,7 +1018,7 @@ function DisciplineByRaceTable({
             {metrics.map((m) => (
               <td key={m} className="px-3 py-1.5 text-right">
                 <CountRateCell
-                  count={counts[m].total}
+                  count={getCount(agg, m, "total")}
                   enrolled={agg.total_enrollment}
                 />
               </td>
@@ -996,7 +1035,7 @@ function DisciplineByRaceTable({
                 {metrics.map((m) => (
                   <td key={m} className="px-3 py-1.5 text-right">
                     <CountRateCell
-                      count={counts[m][race]}
+                      count={getCount(agg, m, race)}
                       enrolled={raceEnrolled}
                     />
                   </td>
@@ -1015,9 +1054,8 @@ function DisciplineByDisabilityTable({
   metrics,
 }: {
   agg: Aggregate;
-  metrics: DisciplineMetric[];
+  metrics: Metric[];
 }) {
-  const counts = agg.discipline.counts;
   const swdEnrolled = agg.breakdown.swd.total;
   if (swdEnrolled <= 0) return null;
 
@@ -1032,7 +1070,7 @@ function DisciplineByDisabilityTable({
             {metrics.map((m) => (
               <td key={m} className="px-3 py-1.5 text-right">
                 <CountRateCell
-                  count={counts[m].total}
+                  count={getCount(agg, m, "total")}
                   enrolled={agg.total_enrollment}
                 />
               </td>
@@ -1043,7 +1081,7 @@ function DisciplineByDisabilityTable({
             {metrics.map((m) => (
               <td key={m} className="px-3 py-1.5 text-right">
                 <CountRateCell
-                  count={counts[m].swd}
+                  count={getCount(agg, m, "swd")}
                   enrolled={swdEnrolled}
                 />
               </td>
@@ -1060,9 +1098,8 @@ function DisciplineDisproportionalityTable({
   metrics,
 }: {
   agg: Aggregate;
-  metrics: DisciplineMetric[];
+  metrics: Metric[];
 }) {
-  const counts = agg.discipline.counts;
   const races = Object.keys(DISCIPLINE_RACE_TO_ENROLLED) as Array<
     keyof typeof DISCIPLINE_RACE_TO_ENROLLED
   >;
@@ -1074,7 +1111,7 @@ function DisciplineDisproportionalityTable({
   // for white-rate to be meaningful (small-N at small schools turns
   // ratios into noise).
   function raceRatio(
-    m: DisciplineMetric,
+    m: Metric,
     race: keyof typeof DISCIPLINE_RACE_TO_ENROLLED
   ): { value: number | null; reason?: string } {
     if (race === "white") return { value: 1 };
@@ -1084,7 +1121,7 @@ function DisciplineDisproportionalityTable({
         reason: `White enrollment (${whiteEnrolled}) is below the ${SMALL_N_THRESHOLD}-student threshold for a stable reference rate.`,
       };
     }
-    const whiteCount = counts[m].white;
+    const whiteCount = getCount(agg, m, "white");
     if (whiteCount === 0) {
       return {
         value: null,
@@ -1096,17 +1133,19 @@ function DisciplineDisproportionalityTable({
     const groupEnrolled = agg.breakdown[enrolledField].total;
     if (groupEnrolled <= 0) return { value: null };
     const whiteRate = whiteCount / whiteEnrolled;
-    const groupRate = counts[m][race] / groupEnrolled;
+    const groupRate = getCount(agg, m, race) / groupEnrolled;
     return { value: groupRate / whiteRate };
   }
 
   // For the SWD row: ratio = SWD rate / non-SWD rate.
   function swdRatio(
-    m: DisciplineMetric
+    m: Metric
   ): { value: number | null; reason?: string } {
     const nonSwdEnrolled = agg.total_enrollment - swdEnrolled;
     if (nonSwdEnrolled < SMALL_N_THRESHOLD) return { value: null };
-    const nonSwdCount = counts[m].total - counts[m].swd;
+    const total = getCount(agg, m, "total");
+    const swd = getCount(agg, m, "swd");
+    const nonSwdCount = total - swd;
     if (nonSwdCount === 0) {
       return {
         value: null,
@@ -1115,7 +1154,7 @@ function DisciplineDisproportionalityTable({
       };
     }
     if (swdEnrolled <= 0) return { value: null };
-    const swdRate = counts[m].swd / swdEnrolled;
+    const swdRate = swd / swdEnrolled;
     const nonSwdRate = nonSwdCount / nonSwdEnrolled;
     return { value: swdRate / nonSwdRate };
   }
@@ -1722,6 +1761,20 @@ const DISCIPLINE_ROWS: CompareRow[] = DISCIPLINE_METRICS.map((m) => ({
   format: pctFormat,
 }));
 
+// Restraint rows mirror discipline: rate (% of total enrolled) computed
+// from the restraint JSONB total. The unit and shape match the existing
+// discipline rows so they sit naturally in the same Compare table.
+const RESTRAINT_ROWS: CompareRow[] = RESTRAINT_METRICS.map((m) => ({
+  key: m,
+  label: RESTRAINT_METRIC_LABELS[m],
+  value: (e) => {
+    const c = e.restraint?.[m]?.total ?? null;
+    if (c == null || !e.total_enrollment) return null;
+    return (c / e.total_enrollment) * 100;
+  },
+  format: pctFormat,
+}));
+
 const TEACHERS_ROWS: CompareRow[] = [
   {
     key: "teachers_fte",
@@ -1770,11 +1823,23 @@ const TEACHERS_ROWS: CompareRow[] = [
   },
 ];
 
+// The Discipline section's Compare table renders all eight metric rows
+// (5 discipline + 3 restraint) as the same shape: rate (% of enrolled).
+const DISCIPLINE_AND_RESTRAINT_ROWS: CompareRow[] = [
+  ...DISCIPLINE_ROWS,
+  ...RESTRAINT_ROWS,
+];
+
 const COMPARE_SECTIONS = [
   { id: "race", title: "Race / ethnicity", rows: RACE_ROWS, firstColLabel: "Group" },
   { id: "programs", title: "Programs", rows: PROGRAM_ROWS, firstColLabel: "Metric" },
   { id: "community", title: "Community", rows: COMMUNITY_ROWS, firstColLabel: "Metric" },
-  { id: "discipline", title: "Discipline", rows: DISCIPLINE_ROWS, firstColLabel: "Metric" },
+  {
+    id: "discipline",
+    title: "Discipline",
+    rows: DISCIPLINE_AND_RESTRAINT_ROWS,
+    firstColLabel: "Metric",
+  },
   { id: "teachers", title: "Teachers & staff", rows: TEACHERS_ROWS, firstColLabel: "Metric" },
 ] as const;
 
@@ -2071,6 +2136,7 @@ function ExportMenu({
       "acs_year",
       "cep_participating",
       "discipline",
+      "restraint",
     ];
     const esc = (v: unknown) => {
       if (v == null) return "";

@@ -7,6 +7,8 @@ import {
   DisciplineCounts,
   DisciplineGroup,
   Entity,
+  RESTRAINT_METRICS,
+  RestraintCounts,
   STAFF_FIELDS,
 } from "./types";
 
@@ -25,6 +27,15 @@ const DISCIPLINE_GROUPS: DisciplineGroup[] = [
 function emptyDisciplineCounts(): DisciplineCounts {
   const out = {} as DisciplineCounts;
   for (const m of DISCIPLINE_METRICS) {
+    out[m] = {} as Record<DisciplineGroup, number>;
+    for (const g of DISCIPLINE_GROUPS) out[m][g] = 0;
+  }
+  return out;
+}
+
+function emptyRestraintCounts(): RestraintCounts {
+  const out = {} as RestraintCounts;
+  for (const m of RESTRAINT_METRICS) {
     out[m] = {} as Record<DisciplineGroup, number>;
     for (const g of DISCIPLINE_GROUPS) out[m][g] = 0;
   }
@@ -128,6 +139,22 @@ export function aggregate(entities: Entity[]): Aggregate {
     }
   }
 
+  // Restraint: deep-sum mirrors discipline. Sentinels were coerced to 0
+  // at ingest time (matching the discipline behavior) so we don't have to
+  // distinguish them here.
+  const restraintCounts = emptyRestraintCounts();
+  let restraint_coverage = 0;
+  for (const e of entities) {
+    if (!e.restraint) continue;
+    restraint_coverage += 1;
+    for (const m of RESTRAINT_METRICS) {
+      for (const g of DISCIPLINE_GROUPS) {
+        const v = e.restraint[m]?.[g];
+        if (typeof v === "number") restraintCounts[m][g] += v;
+      }
+    }
+  }
+
   return {
     entity_count: entities.length,
     total_enrollment,
@@ -142,6 +169,10 @@ export function aggregate(entities: Entity[]): Aggregate {
     discipline: {
       counts: disciplineCounts,
       coverage: discipline_coverage,
+    },
+    restraint: {
+      counts: restraintCounts,
+      coverage: restraint_coverage,
     },
   };
 }

@@ -78,6 +78,16 @@ CREATE TABLE entities (
   median_household_income       INTEGER,
   acs_year                      TEXT,
 
+  -- CRDC discipline counts (per metric × group) stored as JSONB.
+  discipline                    JSONB,
+
+  -- CRDC restraint and seclusion. Same shape as `discipline` (metric ×
+  -- group counts of unique students). Held in a separate JSONB column
+  -- because the metric set is different (mech_restraint, phys_restraint,
+  -- seclusion) and we don't want to overload one column with mixed
+  -- metric vocabularies.
+  restraint                     JSONB,
+
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

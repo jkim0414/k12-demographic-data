@@ -43,7 +43,38 @@ export type Entity = {
   acs_year: string | null;
   cep_participating: boolean | null;
   discipline: DisciplineCounts | null;
+  // CRDC restraint and seclusion. Unique-student counts in the same
+  // metric × group shape as `discipline`, so the Discipline UI tables
+  // host these as additional columns rather than a separate sub-table.
+  restraint: RestraintCounts | null;
 };
+
+// Restraint metric vocabulary. Lives alongside DisciplineMetric rather
+// than under it because the source data is a separate CRDC release
+// (different field names, different reporting universe), but
+// downstream the UI treats them as one combined column set on the
+// Discipline tables. See `ALL_DISCIPLINE_METRICS` in components.
+export type RestraintMetric =
+  | "mech_restraint"
+  | "phys_restraint"
+  | "seclusion";
+
+export const RESTRAINT_METRICS: RestraintMetric[] = [
+  "mech_restraint",
+  "phys_restraint",
+  "seclusion",
+];
+
+export const RESTRAINT_METRIC_LABELS: Record<RestraintMetric, string> = {
+  mech_restraint: "Mechanical restraint",
+  phys_restraint: "Physical restraint",
+  seclusion: "Seclusion",
+};
+
+export type RestraintCounts = Record<
+  RestraintMetric,
+  Record<DisciplineGroup, number>
+>;
 
 // Per-entity discipline counts from CRDC. Five headline metrics, each
 // broken down by total / SWD / seven racial groups. Null at the entity
@@ -217,6 +248,13 @@ export type Aggregate = {
   discipline: {
     counts: DisciplineCounts;
     coverage: number; // entities with non-null discipline JSON
+  };
+  // Restraint and seclusion: same shape as discipline (per-metric ×
+  // per-group sums). Surfaced on the Discipline tables as three extra
+  // metric columns alongside the five discipline columns.
+  restraint: {
+    counts: RestraintCounts;
+    coverage: number; // entities with non-null restraint JSON
   };
 };
 

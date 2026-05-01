@@ -13,7 +13,7 @@ single view.
 | Source                         | Vintage    | What it provides |
 | ------------------------------ | ---------- | ---------------- |
 | **NCES Common Core of Data**   | 2023-24    | Enrollment, race/ethnicity of enrolled students, FRL, teacher and counselor FTE |
-| **Civil Rights Data Collection** (CRDC) | 2021-22 | English learners, students with disabilities, teacher certification, first-year teachers, teacher absenteeism, discipline counts (suspension, expulsion, law-enforcement referral, arrest) with race × disability breakdown |
+| **Civil Rights Data Collection** (CRDC) | 2021-22 | English learners, students with disabilities, teacher certification, first-year teachers, teacher absenteeism, discipline counts (suspension, expulsion, law-enforcement referral, arrest) and restraint and seclusion counts — both with race × disability breakdown |
 | **Census SAIPE**               | 2023-24    | Total population and school-age (5–17) population in poverty within district boundaries |
 | **Census ACS 5-year**          | 2019-2023  | Community race/ethnicity and median household income within district boundaries |
 
@@ -50,7 +50,9 @@ joined to NCES districts via state FIPS + 5-digit district code.
 - **Discipline disparity** (aggregate mode) — a race-disparity-ratio
   matrix (each group's discipline rate as a multiple of the white
   rate) plus a disability-disparity table comparing SWD vs. non-SWD
-  rates.
+  rates. Restraint and seclusion sit alongside the five discipline
+  metrics as additional columns on the same tables, since they share
+  the same unit (unique students) and the same race × disability shape.
 - **Collapsible sections** (aggregate mode) — every section header
   expands/collapses; anchor-nav clicks auto-expand the target
   section before scrolling.
@@ -84,6 +86,19 @@ These are *upstream* data realities, surfaced honestly in the UI:
   school before trusting one — comments in
   `scripts/ingest-discipline.ts` and `scripts/ingest-crdc.ts` call
   this out.
+- **CRDC suppresses restraint totals far more aggressively than
+  discipline totals.** Roughly 5% of schools and 11% of LEAs have a
+  non-suppressed total restraint count, vs ~92% / ~90% for discipline.
+  This is upstream — the per-school students-restrained value falls
+  under tighter privacy redaction than suspension counts. The
+  Discipline section's coverage warning surfaces the gap when both
+  axes don't fully report.
+- **Pacific Islander column is empty for restraint** because the CRDC
+  restraint endpoint doesn't publish a `race=6` aggregate at the
+  `disability=99 / sex=99` slice we need — only at fully-disaggregated
+  cells, almost all of which are suppressed. Discipline columns for
+  Pacific Islander still work; only the three restraint columns read
+  as 0 on that row.
 
 ## Quick start
 
@@ -133,6 +148,7 @@ YEAR=2021 npm run db:ingest:crdc           # CRDC EL/SWD/teacher quality (~5 min
 YEAR=2023 npm run db:patch:ccd-lea-staff   # Re-pulls LEA staff totals (~2 min)
 YEAR=2023 npm run db:patch:cep             # CCD CEP participation flag (~1 min)
 YEAR=2021 npm run db:ingest:discipline     # CRDC discipline counts + race × disability (~15 min)
+YEAR=2021 npm run db:ingest:restraint      # CRDC restraint and seclusion + race × disability (~10 min)
 YEAR=2023 npm run db:ingest:saipe          # Census SAIPE (~30 sec)
 YEAR=2023 npm run db:ingest:acs            # Census ACS race + income (~3 min)
 npm run db:rename-seas                     # SEA names: "06" → "California State Education Agency"
@@ -182,6 +198,11 @@ override them in the review table before they're aggregated.
   divide SWD rate by non-SWD rate. White rows pin at 1.0× by
   definition. Cells suppress when the reference group's enrollment
   is below a 10-student threshold.
+- **Restraint and seclusion** uses the same rate / disparity math
+  (unique students subjected ÷ enrolled), and renders as three
+  additional columns on the same Discipline tables. CRDC publishes
+  the data via `/restraint-and-seclusion/{year}/disability/race/sex/`,
+  which has the same race × disability faceting as discipline.
 - **Compare mode** preserves entity order. The user's selection
   order is what `?ids=...` encodes; `/api/aggregate` returns rows in
   that order via `ORDER BY array_position(ids, id)` rather than
@@ -219,6 +240,7 @@ scripts/
   ingest-saipe.ts                  Census SAIPE: population + child poverty
   ingest-acs.ts                    Census ACS: community race + income
   ingest-discipline.ts             CRDC discipline counts (race × disability)
+  ingest-restraint.ts              CRDC restraint and seclusion (race × disability)
   patch-ccd-lea-staff.ts           Refetch LEA staff totals from CCD
   patch-cep.ts                     CCD CEP-participation flag
   rename-seas.ts                   Rename SEAs from FIPS code to full state name
@@ -228,6 +250,7 @@ scripts/
   migrate-add-crdc-teachers.sql
   migrate-add-cep.sql
   migrate-add-discipline.sql
+  migrate-add-restraint.sql
 ```
 
 ## Deploying to Vercel
