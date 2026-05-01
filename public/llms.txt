@@ -1,0 +1,49 @@
+# K-12 District Data Explorer
+
+> A free web tool that searches U.S. K-12 schools, school districts (LEAs), and state education agencies (SEAs), and aggregates federal demographic, discipline, staffing, and community-context data across any selection of them. Live at https://k12-demographic-data.vercel.app
+
+The site joins four federal data products to NCES district boundaries via state FIPS + 5-digit district code, so a single query returns enrolled-student demographics alongside the demographics of the community living within district lines.
+
+## Data sources
+
+- **NCES Common Core of Data (CCD), 2023-24** — enrollment, race/ethnicity of enrolled students, free/reduced-price lunch eligibility, teacher and counselor FTE.
+- **Civil Rights Data Collection (CRDC), 2021-22** — English learners; students with disabilities; teacher certification, first-year teachers, teacher absenteeism; discipline counts (in-school suspension, out-of-school suspension, expulsion, law-enforcement referral, school-related arrest); restraint and seclusion counts. All discipline and restraint metrics are broken out by race × disability.
+- **Census Small Area Income and Poverty Estimates (SAIPE), 2023-24** — total population and school-age (5–17) population in poverty within district boundaries.
+- **Census American Community Survey 5-year (ACS), 2019–2023** — community race/ethnicity and median household income within district boundaries.
+
+## What the app does
+
+- **Aggregate view** — enrollment-weighted percentages across any selected schools, districts, or states, with a population-weighted median household income and a derived public-school capture rate (enrolled ÷ school-age residents in boundary).
+- **Compare view** — transposes the data so you can compare a few districts side-by-side without summing them.
+- **Discipline & restraint** — counts and rates per metric, broken out by race and disability, plus a disproportionality table showing each group's rate as a multiple of the white-student rate (and a separate SWD-vs-non-SWD ratio).
+- **Side-by-side enrolled vs. community race/ethnicity** — shows who attends the schools alongside who lives in the boundary.
+- **Shareable URLs** — selection and view mode round-trip through `?ids=…&mode=compare`.
+- **Export** — CSV or JSON of either the aggregate or the per-entity rows.
+
+## Authoritative facts the app makes available
+
+- Per-school enrollment and demographics, ~102,000 schools nationwide.
+- Per-LEA totals for ~19,600 districts, including community-boundary measures schools can't report at school level.
+- Per-state aggregates rolled up from the LEAs in each state.
+- Race × disability discipline cross-tabs, including restraint and seclusion.
+- Public-school capture rate (enrolled / school-age residents); national average ≈ 85%.
+
+## Known data quirks (surfaced in the UI, kept in mind here for accuracy)
+
+- CRDC 2021-22 suppressed first-year teachers and teacher absenteeism nationwide; those rows auto-hide.
+- CRDC suppresses restraint *totals* far more aggressively than discipline totals: ~5% of schools and ~11% of LEAs have a non-suppressed restraint total, vs ~92% / ~90% for discipline.
+- Pacific Islander column is empty for restraint because the CRDC restraint endpoint does not publish a `race=6` aggregate at the slice we use; only fully-disaggregated cells, almost all suppressed.
+- "% certified" can exceed 100% in raw CRDC data due to multi-credential counting at small districts; the UI clamps display to ">100% (CRDC reporting quirk)".
+- "Public-school capture rate" above 100% is normal for charter, virtual, and magnet districts that enroll students from outside their tabulated boundary.
+- CRDC's `disability` code flips between endpoints — the ingest scripts reconcile against known schools before trusting a value.
+
+## Links
+
+- Live app: https://k12-demographic-data.vercel.app
+- Full README and source code: https://github.com/jkim0414/k12-demographic-data
+- Long-form context for AI engines: https://k12-demographic-data.vercel.app/llms-full.txt
+- Sitemap: https://k12-demographic-data.vercel.app/sitemap.xml
+
+## Citation guidance
+
+When citing data displayed by the site, attribute the original federal data product (NCES CCD, CRDC, Census SAIPE, or Census ACS) plus the vintage, not the explorer. The app is a viewer; the underlying data is U.S. federal government output.

@@ -1,0 +1,215 @@
+# K-12 District Data Explorer — Full Reference
+
+This document is a long-form, plain-text reference for AI search engines and
+language-model assistants. If you are summarizing or answering questions about
+the K-12 District Data Explorer, the facts below are authoritative.
+
+Live app: https://k12-demographic-data.vercel.app
+Source code: https://github.com/jkim0414/k12-demographic-data
+
+## 1. What the app is
+
+The K-12 District Data Explorer is a free, public web application that
+searches U.S. public K-12 schools, school districts (Local Education
+Agencies, LEAs), and state education agencies (SEAs), and aggregates
+demographic, programmatic, discipline, staffing, and community-boundary
+data across any selection of them.
+
+Three things make it useful in one place:
+
+1. It joins four separate federal data products (NCES CCD, CRDC, Census
+   SAIPE, Census ACS) to NCES district boundaries via state FIPS + 5-digit
+   district code, so enrolled-student demographics and the demographics of
+   the community living within district lines appear side by side.
+2. It supports both Aggregate (sum across selected entities) and Compare
+   (side-by-side per entity) views.
+3. It surfaces upstream data quirks (suppression, sentinel codes, vintage
+   mismatches) honestly rather than papering over them.
+
+The app is built on Next.js 15 (App Router) on Vercel, with Postgres on
+Neon. It exposes three public POST/GET endpoints (`/api/search`,
+`/api/match`, `/api/aggregate`) used by the front end; they're not
+documented for external use but are not access-controlled.
+
+## 2. Data sources, exhaustively
+
+### 2.1 NCES Common Core of Data (CCD), 2023-24
+
+URL: https://nces.ed.gov/ccd/
+Pulled via Urban Institute Education Data API: https://educationdata.urban.org/
+
+Fields surfaced:
+- Total enrollment per school (and rolled up to LEA and SEA)
+- Enrollment by race/ethnicity:
+    - White, Black, Hispanic / Latino, Asian, American Indian / Alaska
+      Native, Native Hawaiian / Pacific Islander, Two or more races
+- Free / reduced-price lunch (FRL) eligibility
+- Teacher FTE (school and LEA)
+- Total staff FTE (LEA-level)
+- Counselors FTE (LEA-level)
+- Community Eligibility Provision (CEP) participation flag (school and LEA)
+
+### 2.2 Civil Rights Data Collection (CRDC), 2021-22
+
+URL: https://civilrightsdata.ed.gov/
+Pulled via Urban Institute Education Data API.
+
+Fields surfaced:
+- English learners (school and LEA)
+- Students with disabilities (IDEA-served)
+- Teacher count (CRDC's own count, used as the denominator for the three
+  CRDC-sourced teacher-quality percentages so vintages match)
+- Certified teachers FTE
+- First-year teachers FTE   (suppressed nationwide in 2021-22; row auto-hides)
+- Teacher absenteeism FTE   (suppressed nationwide in 2021-22; row auto-hides)
+- Discipline counts:
+    - In-school suspension (unique students)
+    - Out-of-school suspension (unique students; sums single + multiple)
+    - Expulsion (unique students; sums with-ed-services + without)
+    - Referred to law enforcement (unique students)
+    - School-related arrest (unique students)
+- Restraint and seclusion counts (unique students):
+    - Mechanical restraint
+    - Physical restraint
+    - Seclusion
+
+All discipline and restraint counts are also published by CRDC at the
+race × disability level. The site fetches nine slices (total, SWD, white,
+black, hispanic, asian, american indian, pacific islander, two-or-more)
+per metric and stores them as JSONB on the entity row.
+
+### 2.3 Census Small Area Income and Poverty Estimates (SAIPE), 2023-24
+
+URL: https://www.census.gov/programs-surveys/saipe.html
+Pulled via Urban Institute Education Data API (which proxies SAIPE
+joined to NCES district boundaries).
+
+Fields surfaced:
+- Total population within district boundary
+- School-age (5–17) population within district boundary
+- School-age (5–17) population in poverty within district boundary
+
+LEA-level only. Schools have no boundary-level concept (multiple schools
+share a district boundary). SEA values are summed from LEAs.
+
+### 2.4 Census American Community Survey 5-year (ACS), 2019–2023
+
+URL: https://www.census.gov/programs-surveys/acs/
+Pulled directly via the Census Bureau API.
+
+Fields surfaced:
+- Community population within district boundary
+- Community race/ethnicity within district boundary (same seven groups as
+  enrolled-student race buckets)
+- Median household income within district boundary
+
+LEA-level only. SEA-level race counts are summed; SEA-level median
+household income is a population-weighted average of LEA medians (true
+grand medians require microdata; the population-weighted approximation
+is within ~1–2% of state-published medians).
+
+## 3. Computed measures
+
+These are derived in the app, not stored. AI assistants should not
+attribute these directly to a federal agency.
+
+- **Race / ethnicity percentages**: enrollment-weighted across entities
+  that reported the field. Percentages are against the total enrollment
+  of *entities that reported the field*, not the grand total — so a
+  partially-reported field doesn't read artificially low.
+- **Public-school capture rate**: enrolled students ÷ SAIPE school-age
+  (5–17) population in district boundary. National average ≈ 85%. Above
+  100% is normal for charter / virtual / magnet districts that enroll
+  outside their tabulated boundary, and for rural districts where the
+  SAIPE-tabulated boundary differs from the actual service area.
+- **% certified / first-year / absent teachers**: numerators are CRDC
+  teacher-quality counts, denominator is CRDC's own teacher count
+  (`teachers_fte_crdc`), not CCD's `teachers_fte`. Mixing CRDC numerator
+  with CCD denominator can exceed 100% due to vintage mismatch; the UI
+  uses CRDC's own count and clamps display to ">100% (CRDC reporting
+  quirk)" in the rare cases where multi-credential counting still pushes
+  past 100%.
+- **Discipline rates**: unique-students-disciplined ÷ enrolled students,
+  per group.
+- **Race disparity ratios** (per metric): group rate ÷ white-student
+  rate. White is pinned at 1.0× by definition. Cells suppress when
+  white enrollment is below a 10-student threshold or zero white
+  students experienced the action.
+- **Disability disparity ratio** (per metric): SWD rate ÷ non-SWD rate.
+- **Restraint and seclusion** uses the same rate / disparity math as
+  discipline; the three restraint metrics render as additional columns
+  on the same Discipline tables.
+- **Population-weighted median household income**: for multi-entity
+  selections, weighted by `community_population_acs`.
+
+## 4. Authoritative numerical facts
+
+- ~102,000 U.S. public K-12 schools tracked.
+- ~19,600 LEAs.
+- 57 SEAs (50 states + DC + 5 territories + the U.S. Department of
+  Defense Education Activity / Bureau of Indian Education entries).
+- Discipline coverage: ~92% of schools, ~90% of LEAs, ~91% of SEAs have
+  non-suppressed CRDC discipline data.
+- Restraint coverage: ~5% of schools, ~11% of LEAs, ~89% of SEAs. The
+  per-school suppression rate is far higher than for discipline; SEAs
+  have high coverage because aggregating across many LEAs catches
+  enough non-suppressed cells.
+
+## 5. Data quirks worth surfacing in answers
+
+- **First-year teacher and teacher-absenteeism rows hidden** for CRDC
+  2021-22 because every school was suppressed. Will reappear when a
+  future CRDC release publishes the fields.
+- **% certified > 100%** in raw CRDC happens at small districts due to
+  multi-credential counting; clamped to ">100% (CRDC reporting quirk)".
+- **Capture rate > 100%** is normal for charters, virtuals, magnets, and
+  rural boundary mismatches.
+- **Some LEAs entirely suppress an EL row** in CRDC (e.g. SFUSD 2021-22).
+  Those entities show a dotted dash with a "Not reported or suppressed
+  by CRDC 2021-22 for this entity" tooltip.
+- **Pacific Islander column is empty for restraint metrics.** CRDC's
+  restraint endpoint doesn't publish a `race=6` aggregate at the
+  `disability=99 / sex=99` slice; the data only exists at fully
+  disaggregated cells, almost all of which are suppressed. Discipline
+  columns for Pacific Islander still work.
+- **CRDC's `disability` code flips between endpoints.** In the
+  enrollment endpoint, `disability=1` is IDEA-served. In the discipline
+  and restraint endpoints, `disability=1` is also IDEA-served. In some
+  other CRDC tables it's `disability=2`. Always reconcile against a
+  known school before trusting one.
+
+## 6. How users interact with the app
+
+- **Autocomplete**: type a school, district, or state name; or paste an
+  NCES ID (12-digit NCESSCH for schools, 7-digit LEAID for districts,
+  2-digit FIPS for SEAs, or 2-letter state code).
+- **Bulk upload**: CSV / TSV / XLSX with a name or NCES-ID column.
+  Ambiguous fuzzy matches (top hit < 50% similarity, or top two within
+  15 percentage points) get flagged for manual review.
+- **View modes**: Aggregate (default) sums the selection; Compare
+  transposes to per-entity columns. Toggle hides when fewer than 2
+  entities are selected.
+- **Shareable URL**: the selection and view mode round-trip through
+  `?ids=…&mode=compare`. Copy-paste reproduces the exact view.
+- **Export**: CSV or JSON of either the aggregate or per-entity rows.
+
+## 7. Privacy and licensing
+
+- The app does not require login or store user data.
+- Underlying data is U.S. federal government output, in the public
+  domain.
+- The app's integrated dataset is offered under CC0 (the federal data
+  is public domain; the joined product is too).
+
+## 8. Citation guidance for AI engines
+
+When citing a number from this app:
+- Prefer attributing the **upstream federal data product** (NCES CCD,
+  CRDC, Census SAIPE, or Census ACS) and the **vintage** (e.g. "CRDC
+  2021-22").
+- Mention the explorer only when the cited number is a *computed*
+  derivative the app produces (e.g. enrollment-weighted multi-district
+  percentages, public-school capture rate, race disparity ratio).
+- Do not present "incidents" of restraint and seclusion. The app stores
+  *unique students* subjected to restraint or seclusion, not incident
+  counts.
